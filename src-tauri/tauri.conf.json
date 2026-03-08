@@ -19,7 +19,18 @@
         "fullscreen": false,
         "transparent": true,
         "decorations": false,
-        "shadow": false
+        "shadow": false,
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "/splashscreen.html",
+        "width": 450,
+        "height": 450,
+        "transparent": true,
+        "decorations": false,
+        "center": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {
@@ -28,11 +39,13 @@
         {
           "identifier": "default",
           "description": "Default capability",
-          "windows": ["main"],
+          "windows": ["main", "splashscreen"],
           "permissions": [
             "core:default",
             "window-state:default",
             "core:window:allow-minimize",
+            "core:window:allow-close",
+            "core:window:allow-show",
             "core:window:allow-close",
             "core:window:allow-start-dragging",
             "sql:default",

@@ -202,8 +202,52 @@ export default function App() {
       setSiteType(savedSiteType);
     }
 
-    initDb();
-    loadSettings();
+    const initialize = async () => {
+      const startTime = Date.now();
+      const MIN_SPLASH_TIME = 3000;
+
+      try {
+        // Run initialization in parallel
+        await Promise.all([
+          initDb(),
+          loadSettings()
+        ]);
+
+        // Calculate remaining time for splash screen
+        const elapsedTime = Date.now() - startTime;
+        const remainingTime = Math.max(0, MIN_SPLASH_TIME - elapsedTime);
+
+        setTimeout(async () => {
+          if (isTauri) {
+            try {
+              const { getAllWindows } = await import('@tauri-apps/api/window');
+              const windows = await getAllWindows();
+              const splash = windows.find(w => w.label === 'splashscreen');
+              const main = windows.find(w => w.label === 'main');
+
+              if (main) {
+                await main.show();
+              }
+              if (splash) {
+                await splash.close();
+              }
+            } catch (e) {
+              console.error('Failed to manage windows:', e);
+              // Fallback: just show current window if something goes wrong
+              await getCurrentWindow().show();
+            }
+          }
+        }, remainingTime);
+      } catch (error) {
+        console.error('Initialization failed:', error);
+        // Fallback: show main window anyway if initialization fails
+        if (isTauri) {
+          getCurrentWindow().show();
+        }
+      }
+    };
+
+    initialize();
   }, []);
 
   const loadSettings = async () => {
