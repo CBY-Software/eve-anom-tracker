@@ -21,6 +21,8 @@ interface SettingsProps {
   showToast: (message: string) => void;
 }
 
+const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_IPC__' in window);
+
 export default function Settings({ settings, onSettingsChange, showToast }: SettingsProps) {
   const [isBackingUp, setIsBackingUp] = useState(false);
 
@@ -29,6 +31,11 @@ export default function Settings({ settings, onSettingsChange, showToast }: Sett
   };
 
   const handleBrowse = async () => {
+    if (!isTauri) {
+      showToast('Backup is only available in the desktop application');
+      return;
+    }
+
     try {
       const selected = await open({
         directory: true,
@@ -46,6 +53,11 @@ export default function Settings({ settings, onSettingsChange, showToast }: Sett
   };
 
   const handleBackup = async () => {
+    if (!isTauri) {
+      showToast('Backup is only available in the desktop application');
+      return;
+    }
+
     if (!settings.backupPath) {
       showToast('Please select a backup path first');
       return;
