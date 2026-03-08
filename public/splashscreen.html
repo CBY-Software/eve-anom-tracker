@@ -49,8 +49,8 @@
 
     .status-container {
       position: absolute;
-      bottom: 40px;
-      right: 40px;
+      bottom: 12px;
+      right: 12px;
       text-align: right;
       z-index: 10;
     }
@@ -60,8 +60,9 @@
       font-size: 10px;
       font-weight: 900;
       letter-spacing: 0.2em;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
       text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(0,0,0,0.8);
     }
 
     .loader {
@@ -73,9 +74,10 @@
     .dot {
       width: 4px;
       height: 4px;
-      background-color: #00ff7f;
+      background-color: #f0b419;
       border-radius: 50%;
       animation: pulse 1.5s infinite ease-in-out;
+      box-shadow: 0 0 5px rgba(240, 180, 25, 0.5);
     }
 
     .dot:nth-child(2) { animation-delay: 0.2s; }
@@ -99,8 +101,8 @@
     .loading-bar {
       height: 100%;
       width: 0%;
-      background: #00ff7f;
-      box-shadow: 0 0 10px #00ff7f;
+      background: #f0b419;
+      box-shadow: 0 0 10px #f0b419;
       animation: progress 3s linear forwards;
     }
 
@@ -116,7 +118,7 @@
   </div>
 
   <div class="status-container">
-    <div class="status-text">Initializing Systems</div>
+    <div class="status-text">Loading...</div>
     <div class="loader">
       <div class="dot"></div>
       <div class="dot"></div>

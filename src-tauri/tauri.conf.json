@@ -29,6 +29,7 @@
         "height": 450,
         "transparent": true,
         "decorations": false,
+        "shadow": false,
         "center": true,
         "alwaysOnTop": true
       }
