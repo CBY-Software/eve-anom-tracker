@@ -2,7 +2,6 @@ import { ChangeEvent, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { copyFile, mkdir } from '@tauri-apps/plugin-fs';
-import { join } from '@tauri-apps/api/path';
 import { Folder, Save, Loader2 } from 'lucide-react';
 
 export interface AppSettings {
@@ -69,17 +68,17 @@ export default function Settings({ settings, onSettingsChange, showToast }: Sett
       const now = new Date();
       const timestamp = now.toISOString().replace(/[:T]/g, '-').split('.')[0];
       const folderName = `${timestamp} EVE AnomTracker Data`;
-      const backupDest = await join(settings.backupPath, folderName);
+      const backupDest = await invoke<string>('join_paths', { base: settings.backupPath, sub: folderName });
 
       // Create timestamped folder
       await mkdir(backupDest, { recursive: true });
 
       // Copy files
-      const dbFile = await join(dataDir, 'anomtracker.db');
-      const settingsFile = await join(dataDir, 'settings.json');
+      const dbFile = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db' });
+      const settingsFile = await invoke<string>('join_paths', { base: dataDir, sub: 'settings.json' });
       
-      const dbDest = await join(backupDest, 'anomtracker.db');
-      const settingsDest = await join(backupDest, 'settings.json');
+      const dbDest = await invoke<string>('join_paths', { base: backupDest, sub: 'anomtracker.db' });
+      const settingsDest = await invoke<string>('join_paths', { base: backupDest, sub: 'settings.json' });
 
       await copyFile(dbFile, dbDest);
       await copyFile(settingsFile, settingsDest);

@@ -94,6 +94,13 @@ fn get_data_dir() -> String {
     path.to_string_lossy().to_string()
 }
 
+#[tauri::command]
+fn join_paths(base: String, sub: String) -> String {
+    let mut path = PathBuf::from(base);
+    path.push(sub);
+    path.to_string_lossy().to_string()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let db_url = format!("sqlite:{}", get_db_file_path().to_string_lossy());
@@ -101,7 +108,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_path::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(
@@ -113,6 +119,7 @@ pub fn run() {
             greet, 
             get_db_path, 
             get_data_dir,
+            join_paths,
             apply_window_settings, 
             load_settings, 
             save_settings

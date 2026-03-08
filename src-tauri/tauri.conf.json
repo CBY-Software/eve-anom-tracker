@@ -41,7 +41,6 @@
             "sql:allow-select",
             "fs:default",
             "dialog:default",
-            "path:default",
             "fs:allow-write-recursive",
             "fs:allow-read-recursive",
             "fs:allow-copy",
