@@ -33,7 +33,10 @@
     .logo {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      background-image: url('app-icon.png');
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
       animation: breathe 3s ease-in-out infinite;
     }
 
@@ -105,7 +108,7 @@
 </head>
 <body>
   <div class="logo-container">
-    <img src="app-icon.png" alt="Logo" class="logo">
+    <div class="logo"></div>
   </div>
 
   <div class="status-container">
