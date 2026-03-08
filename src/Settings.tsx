@@ -220,7 +220,10 @@ export default function Settings({ settings, onSettingsChange, showToast }: Sett
                 {new Date(settings.lastAutoBackup).toLocaleString()}
               </span>
               <span className="text-[10px] text-gray-500">
-                ({Math.floor((new Date().getTime() - new Date(settings.lastAutoBackup).getTime()) / (1000 * 60 * 60 * 24))} days ago)
+                ({Math.floor((new Date().getTime() - new Date(settings.lastAutoBackup).getTime()) / (1000 * 60 * 60 * 24)) === 0 
+                  ? 'Today' 
+                  : `${Math.floor((new Date().getTime() - new Date(settings.lastAutoBackup).getTime()) / (1000 * 60 * 60 * 24))} days ago`}
+                )
               </span>
             </div>
           </div>

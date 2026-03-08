@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import Database from '@tauri-apps/plugin-sql';
 import { format } from 'date-fns';
-import { Trash2, Menu, X, Crosshair, BarChart2, Settings as SettingsIcon, Minus, ChevronUp, ChevronDown, Activity, ExternalLink } from 'lucide-react';
+import { Trash2, Menu, X, Crosshair, BarChart2, Settings as SettingsIcon, Minus, ChevronUp, ChevronDown, Activity, ExternalLink, HardDrive } from 'lucide-react';
 import Settings, { AppSettings } from './Settings';
 
 interface AnomLog {
@@ -313,8 +313,13 @@ export default function App() {
 
     const lastBackup = currentSettings.lastAutoBackup ? new Date(currentSettings.lastAutoBackup) : new Date(0);
     const now = new Date();
-    const diffMs = now.getTime() - lastBackup.getTime();
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    
+    // Normalize to date only (midnight) for date-based frequency check
+    const lastBackupDate = new Date(lastBackup.getFullYear(), lastBackup.getMonth(), lastBackup.getDate());
+    const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const diffMs = nowDate.getTime() - lastBackupDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     let shouldBackup = false;
     if (currentSettings.autoBackupFrequency === 'daily' && diffDays >= 1) shouldBackup = true;
@@ -1093,7 +1098,7 @@ export default function App() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0a0a0a]/95 backdrop-blur-sm p-6">
           <div className="max-w-md w-full bg-[#141414] border-2 border-emerald-500/30 rounded-xl p-8 shadow-[0_0_50px_rgba(16,185,129,0.1)] flex flex-col items-center text-center space-y-6">
             <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center">
-              <Activity size={40} className="text-emerald-500" />
+              <HardDrive size={40} className="text-emerald-500" />
             </div>
             
             <div className="space-y-2">
