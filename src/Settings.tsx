@@ -1,7 +1,5 @@
 import { ChangeEvent, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
-import { copyFile, mkdir } from '@tauri-apps/plugin-fs';
 import { Folder, Save, Loader2 } from 'lucide-react';
 
 export interface AppSettings {
@@ -36,6 +34,7 @@ export default function Settings({ settings, onSettingsChange, showToast }: Sett
     }
 
     try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({
         directory: true,
         multiple: false,
@@ -64,6 +63,7 @@ export default function Settings({ settings, onSettingsChange, showToast }: Sett
 
     setIsBackingUp(true);
     try {
+      const { copyFile, mkdir } = await import('@tauri-apps/plugin-fs');
       const dataDir = await invoke<string>('get_data_dir');
       const now = new Date();
       const timestamp = now.toISOString().replace(/[:T]/g, '-').split('.')[0];
