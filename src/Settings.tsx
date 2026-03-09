@@ -1,6 +1,7 @@
 import { ChangeEvent, useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Folder, Save, Loader2, ExternalLink, Search, X, Plus } from 'lucide-react';
+import systemsData from './data/solar_systems.json';
 
 interface SolarSystem {
   regionID: number;
@@ -34,32 +35,18 @@ const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in windo
 export default function Settings({ settings, onSettingsChange, showToast }: SettingsProps) {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [allSystems, setAllSystems] = useState<SolarSystem[]>([]);
   const [filteredSystems, setFilteredSystems] = useState<SolarSystem[]>([]);
 
   useEffect(() => {
-    const loadSystems = async () => {
-      try {
-        const response = await fetch('/solar_systems.json');
-        const data = await response.json();
-        setAllSystems(data);
-      } catch (error) {
-        console.error('Failed to load solar systems:', error);
-      }
-    };
-    loadSystems();
-  }, []);
-
-  useEffect(() => {
     if (searchTerm.length >= 2) {
-      const filtered = allSystems
+      const filtered = (systemsData as SolarSystem[])
         .filter(s => s.solarSystemName.toLowerCase().includes(searchTerm.toLowerCase()))
         .slice(0, 10);
       setFilteredSystems(filtered);
     } else {
       setFilteredSystems([]);
     }
-  }, [searchTerm, allSystems]);
+  }, [searchTerm]);
 
   const handleChange = (key: keyof AppSettings, value: any) => {
     onSettingsChange({ ...settings, [key]: value });

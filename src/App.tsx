@@ -1,4 +1,5 @@
 import { useState, useEffect, ChangeEvent, useRef, MouseEvent } from 'react';
+import systemsData from './data/solar_systems.json';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import Database from '@tauri-apps/plugin-sql';
@@ -160,7 +161,6 @@ export default function App() {
 
   const [siteType, setSiteType] = useState(siteTypes[0] || 'Other');
   const [selectedSystem, setSelectedSystem] = useState<string>('');
-  const [allSystems, setAllSystems] = useState<any[]>([]);
   const [history, setHistory] = useState<AnomLog[]>([]);
   const [fullHistory, setFullHistory] = useState<AnomLog[]>([]);
   const [recentCount, setRecentCount] = useState<number>(0);
@@ -218,10 +218,10 @@ export default function App() {
 
       try {
         // Load solar systems data
-        fetch('/solar_systems.json')
-          .then(res => res.json())
-          .then(data => setAllSystems(data))
-          .catch(err => console.error('Failed to load solar systems:', err));
+        if (!systemsData || !Array.isArray(systemsData)) {
+          console.error('Failed to load solar systems: Invalid system data');
+          showToast('System data failed to load. Please check installation.');
+        }
 
         // Run initialization in parallel
         await Promise.all([
@@ -731,7 +731,7 @@ export default function App() {
     if (!db) return;
 
     try {
-      const systemData = allSystems.find(s => s.solarSystemName === selectedSystem);
+      const systemData = systemsData.find(s => s.solarSystemName.toLowerCase() === selectedSystem.toLowerCase());
       
       await db.execute(
         `INSERT INTO anom_logs (
