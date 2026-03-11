@@ -118,7 +118,7 @@ const Titlebar = ({ isCollapsed, onToggleCollapse }: { isCollapsed: boolean, onT
         onMouseDown={handleMouseDown}
         className="flex-1 h-full cursor-default flex items-center px-3"
       >
-        <span className="text-[10px] font-bold text-gray-500 tracking-[0.2em] uppercase pointer-events-none">
+        <span className="text-[10px] font-bold text-[#f0b419] tracking-[0.2em] uppercase pointer-events-none">
           EVE ANOMTRACKER
         </span>
       </div>
@@ -332,7 +332,7 @@ export default function App() {
   const applySettings = async (s: AppSettings) => {
     try {
       if (isTauri) {
-        let width = s.orientation === 'portrait' ? 360 : 650;
+        let width = s.orientation === 'portrait' ? 360 : 700;
         let height = s.orientation === 'portrait' ? 725 : 450;
         
         if (currentView === 'statistics') {
@@ -531,16 +531,26 @@ export default function App() {
 
             if (query.includes('LIMIT ? OFFSET ?')) {
               let logsToUse = [...this.logs].reverse();
+              let currentParamIdx = 0;
+
               if (query.includes('WHERE site_type = ?')) {
-                logsToUse = logsToUse.filter(l => l.site_type === bindValues![0]);
-                const limit = bindValues![1];
-                const offset = bindValues![2];
-                return logsToUse.slice(offset, offset + limit) as unknown as T;
-              } else {
-                const limit = bindValues![0];
-                const offset = bindValues![1];
-                return logsToUse.slice(offset, offset + limit) as unknown as T;
+                const filterVal = bindValues![currentParamIdx++];
+                logsToUse = logsToUse.filter(l => l.site_type === filterVal);
               }
+
+              if (query.includes('date(timestamp) >= ?')) {
+                const startVal = bindValues![currentParamIdx++];
+                logsToUse = logsToUse.filter(l => l.timestamp.split(' ')[0] >= startVal);
+              }
+
+              if (query.includes('date(timestamp) <= ?')) {
+                const endVal = bindValues![currentParamIdx++];
+                logsToUse = logsToUse.filter(l => l.timestamp.split(' ')[0] <= endVal);
+              }
+
+              const limit = bindValues![currentParamIdx++];
+              const offset = bindValues![currentParamIdx++];
+              return logsToUse.slice(offset, offset + limit) as unknown as T;
             }
 
             if (query.includes('ORDER BY id DESC LIMIT 3')) {
@@ -823,7 +833,7 @@ export default function App() {
 
   const isLandscape = settings.orientation === 'landscape';
   const isStatistics = currentView === 'statistics';
-  const appWidth = isStatistics ? 800 : (isLandscape ? 650 : 360);
+  const appWidth = isStatistics ? 800 : (isLandscape ? 700 : 360);
   const appHeight = isCollapsed ? 28 : (isStatistics ? 800 : (isLandscape ? 450 : 725));
 
   return (
@@ -1392,6 +1402,78 @@ export default function App() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* History Modal (Last 12h) */}
+      {isHistoryModalOpen && (
+        <div className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col z-40">
+          <div className="p-4 border-b border-[#f0b419]/30 flex justify-between items-center bg-[#0a0a0a]">
+            <div className="flex items-baseline space-x-3">
+              <h2 className="text-lg font-bold text-[#f0b419] uppercase tracking-wider">
+                Recent History
+              </h2>
+              <span className="text-xs font-mono text-gray-500 uppercase tracking-widest">
+                | Last 12 Hours
+              </span>
+            </div>
+            <button
+              onClick={() => setIsHistoryModalOpen(false)}
+              className="text-gray-400 hover:text-white transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {fullHistory.length === 0 ? (
+              <p className="text-sm text-gray-500 italic text-center py-8">
+                No sites logged in the last 12 hours.
+              </p>
+            ) : (
+              fullHistory.map((log) => {
+                const dateObj = new Date(log.timestamp + 'Z');
+                const timeStr = isNaN(dateObj.getTime())
+                  ? log.timestamp
+                  : format(dateObj, 'HH:mm:ss');
+                
+                const icons = getActiveIcons(log);
+
+                return (
+                  <div
+                    key={log.id}
+                    className="flex items-center justify-between bg-[#141414] border border-gray-800 p-2 rounded text-xs group"
+                  >
+                    <div className="flex-1 truncate pr-2">
+                      <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                      <span className="text-gray-200 font-medium">
+                        {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
+                      </span>
+                      {icons.length > 0 && (
+                        <span className="ml-2">
+                          <span className="text-gray-500 mr-1">-</span>
+                          {icons.map((icon, idx) => (
+                            <span key={idx}>
+                              <span className={`text-[10px] tracking-wider ${icon.color === 'gold' ? 'text-[#f0b419]' : icon.color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]'}`}>
+                                {icon.label}
+                              </span>
+                              {idx < icons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => requestDelete(log.id)}
+                      className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                      title="Delete log"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
