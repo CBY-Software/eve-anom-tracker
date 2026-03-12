@@ -1358,6 +1358,10 @@ export default function App() {
                           
                           return (
                             <div key={dayStr} className="flex-1 flex flex-col justify-end items-center group relative h-full">
+                              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-opacity flex flex-col items-center">
+                                <span className="font-bold">{format(new Date(dayStr), 'EEEE, MMM dd')}</span>
+                                {count > 0 && <span className="text-[9px] opacity-70">{count} sites</span>}
+                              </div>
                               {count > 0 && (
                                 <div className="text-[9px] font-bold text-[#f0b419]/70 group-hover:text-[#f0b419] mb-1 transition-colors z-10">
                                   {count}
