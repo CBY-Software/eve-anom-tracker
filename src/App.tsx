@@ -25,6 +25,11 @@ interface AnomLog {
   location_security?: string;
 }
 
+interface DailyStat {
+  date: string;
+  count: number;
+}
+
 interface StatsData {
   totalSites: number;
   successfulSites: number;
@@ -197,6 +202,7 @@ export default function App() {
   const [siteType, setSiteType] = useState(siteTypes[0] || 'Other');
   const [selectedSystem, setSelectedSystem] = useState<string>('');
   const [history, setHistory] = useState<AnomLog[]>([]);
+  const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
   const [fullHistory, setFullHistory] = useState<AnomLog[]>([]);
   const [recentCount, setRecentCount] = useState<number>(0);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -358,7 +364,7 @@ export default function App() {
         
         if (currentView === 'statistics') {
           width = 800;
-          height = 800;
+          height = 825;
         }
         
         if (isCollapsed) {
@@ -605,6 +611,9 @@ export default function App() {
               }
               return [...filtered].reverse() as unknown as T;
             }
+            if (query.includes("GROUP BY date(timestamp, 'localtime')")) {
+              return [] as unknown as T;
+            }
             return [] as unknown as T;
           }
         };
@@ -645,6 +654,18 @@ export default function App() {
 
   const fetchStats = async (database: any, filter: string = 'All') => {
     try {
+      let dailyQuery = "SELECT date(timestamp, 'localtime') as date, COUNT(*) as count FROM anom_logs WHERE timestamp >= date('now', 'localtime', '-30 days')";
+      const dailyParams: any[] = [];
+      
+      if (filter !== 'All') {
+        dailyQuery += " AND site_type = ?";
+        dailyParams.push(filter);
+      }
+      dailyQuery += " GROUP BY date(timestamp, 'localtime') ORDER BY date ASC";
+      
+      const dailyResult = await database.select(dailyQuery, dailyParams);
+      setDailyStats(dailyResult as DailyStat[]);
+
       let query = `
         SELECT 
           COUNT(*) as total,
@@ -874,7 +895,7 @@ export default function App() {
   const isLandscape = settings.orientation === 'landscape';
   const isStatistics = currentView === 'statistics';
   const appWidth = isStatistics ? 800 : (isLandscape ? 700 : 360);
-  const appHeight = isCollapsed ? 28 : (isStatistics ? 800 : (isLandscape ? 450 : 725));
+  const appHeight = isCollapsed ? 28 : (isStatistics ? 825 : (isLandscape ? 450 : 725));
 
   return (
     <div 
@@ -1194,7 +1215,7 @@ export default function App() {
             )}
 
             {currentView === 'statistics' && stats && (
-              <div className="flex-1 overflow-y-auto pt-3 px-6 pb-6 space-y-8 animate-in fade-in duration-500">
+              <div className="flex-1 overflow-y-auto pt-[5px] px-6 pb-2 space-y-6 animate-in fade-in duration-500">
                 {/* Filter Header */}
                 <div className="flex items-center justify-end mb-2 space-x-6">
                   <div className="flex items-center space-x-3">
@@ -1229,7 +1250,7 @@ export default function App() {
 
                 {/* Header Stats */}
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="bg-[#141414] border border-[#f0b419]/30 p-6 rounded-xl relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
+                  <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group flex flex-col justify-between min-h-[135px]">
                     <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                       <BarChart2 size={48} />
                     </div>
@@ -1252,7 +1273,7 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <div className="bg-[#141414] border border-[#f0b419]/30 p-6 rounded-xl relative overflow-hidden group">
+                  <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                       <Activity size={48} />
                     </div>
@@ -1311,6 +1332,46 @@ export default function App() {
                     <StatCard label="Capital" count={stats.specialSpawns.capital} total={stats.totalSites} color="blue" />
                     <StatCard label="Faction Capital" count={stats.specialSpawns.factionCapital} total={stats.totalSites} color="blue" />
                     <StatCard label="Titan" count={stats.specialSpawns.titan} total={stats.totalSites} color="blue" />
+                  </div>
+                </section>
+
+                {/* 30 Day Activity Chart */}
+                <section>
+                  <div className="flex items-center w-full mb-3">
+                    <h3 className="text-[9px] font-bold text-[#f0b419] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Last 30 Days Activity</h3>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/50 to-transparent"></div>
+                  </div>
+                  <div className="bg-transparent px-1">
+                    <div className="h-[80px] flex items-end space-x-1">
+                      {(() => {
+                        const days = Array.from({ length: 30 }).map((_, i) => {
+                           const d = new Date();
+                           d.setDate(d.getDate() - (29 - i));
+                           return format(d, 'yyyy-MM-dd');
+                        });
+                        const maxCount = Math.max(...dailyStats.map(d => d.count), 1);
+                        
+                        return days.map(dayStr => {
+                          const stat = dailyStats.find(s => s.date === dayStr);
+                          const count = stat ? stat.count : 0;
+                          const heightPerc = (count / maxCount) * 100;
+                          
+                          return (
+                            <div key={dayStr} className="flex-1 flex flex-col justify-end items-center group relative h-full">
+                              {count > 0 && (
+                                <div className="text-[9px] font-bold text-[#f0b419]/70 group-hover:text-[#f0b419] mb-1 transition-colors z-10">
+                                  {count}
+                                </div>
+                              )}
+                              <div 
+                                className={`w-full transition-all duration-300 rounded-t-[2px] ${count > 0 ? 'bg-[#f0b419]/60 group-hover:bg-[#f0b419] shadow-[0_0_8px_rgba(240,180,25,0.4)]' : 'bg-[#f0b419]/10'}`}
+                                style={{ height: count > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
+                              ></div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
                   </div>
                 </section>
               </div>
