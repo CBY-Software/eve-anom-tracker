@@ -47,5 +47,8 @@ jobs:
           # Rename the raw binary to a user-friendly name
           Rename-Item -Path $exePath -NewName $newName
           
+          # Delete existing release/tag if it exists to allow re-runs (common in beta)
+          gh release delete $tag --yes --cleanup-tag || true
+          
           # Create release and upload the portable exe
-          gh release create $tag "src-tauri/target/release/$newName" --title "EVE AnomTracker $tag (Beta)" --notes "This is a beta version. Download the portable executable below to run the app without installation." --prerelease --clobber
+          gh release create $tag "src-tauri/target/release/$newName" --title "EVE AnomTracker $tag (Beta)" --notes "This is a beta version. Download the portable executable below to run the app without installation." --prerelease
