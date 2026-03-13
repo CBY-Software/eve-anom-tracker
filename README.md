@@ -58,7 +58,7 @@ A premium, lightweight desktop overlay for EVE Online players to track combat an
 
 ## 🛠️ How to Use (Portable)
 
-AnomTracker can be run as a standalone application without installation:
+EVE AnomTracker can be run as a standalone application without installation:
 
 1. Download the standalone `.exe` file from the [Releases](../../releases) page.
 2. Move the `.exe` to any folder on your computer.
