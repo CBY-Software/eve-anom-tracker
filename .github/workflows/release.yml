@@ -34,19 +34,18 @@ jobs:
         run: npm run tauri icon app-icon.jpg
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'AnomTracker ${{ github.ref_name }} (Beta)'
-          releaseBody: 'This is a beta version. Download the portable executable below to run the app without installation.'
-          releaseDraft: false
-          prerelease: true
+        run: npm run tauri build
 
-      - name: Upload Portable Executable (Windows)
+      - name: Create Release and Upload Portable Executable
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          Rename-Item -Path "src-tauri/target/release/anomtracker.exe" -NewName "EVE AnomTracker-Portable.exe"
-          gh release upload ${{ github.ref_name }} "src-tauri/target/release/EVE AnomTracker-Portable.exe" --clobber
+          $tag = "${{ github.ref_name }}"
+          $exePath = "src-tauri/target/release/anomtracker.exe"
+          $newName = "EVE AnomTracker-Portable.exe"
+          
+          # Rename the raw binary to a user-friendly name
+          Rename-Item -Path $exePath -NewName $newName
+          
+          # Create release and upload the portable exe
+          gh release create $tag "src-tauri/target/release/$newName" --title "EVE AnomTracker $tag (Beta)" --notes "This is a beta version. Download the portable executable below to run the app without installation." --prerelease --clobber
