@@ -32,7 +32,7 @@ A premium, lightweight desktop overlay for EVE Online players to track combat an
 
 ## ⚙️ Settings Guide
 
-![Settings Guide](public/settings-guide.png)
+<img src="public/settings-guide.png" alt="Settings Guide" width="400">
 
 <details>
 <summary>Detailed Explanations of Application Settings</summary>
