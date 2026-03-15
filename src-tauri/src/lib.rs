@@ -42,6 +42,24 @@ fn get_migrations() -> Vec<Migration> {
             ALTER TABLE anom_logs ADD COLUMN location_security TEXT;
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "create_belt_logs_table",
+            sql: "
+            CREATE TABLE IF NOT EXISTS belt_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                was_faction_spawn INTEGER DEFAULT 0 CHECK(was_faction_spawn IN (0, 1)),
+                was_hauler_spawn INTEGER DEFAULT 0 CHECK(was_hauler_spawn IN (0, 1)),
+                was_officer_spawn INTEGER DEFAULT 0 CHECK(was_officer_spawn IN (0, 1)),
+                officer_name TEXT,
+                location_system TEXT,
+                location_region TEXT,
+                location_security TEXT
+            );
+            ",
+            kind: MigrationKind::Up,
         }
     ]
 }

@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import Database from '@tauri-apps/plugin-sql';
 import { format, subDays } from 'date-fns';
-import { Trash2, Menu, X, Crosshair, BarChart2, Settings as SettingsIcon, Minus, ChevronUp, ChevronDown, Activity, ExternalLink, HardDrive, Calendar } from 'lucide-react';
+import { Trash2, Menu, X, Crosshair, BarChart2, Settings as SettingsIcon, Minus, ChevronUp, ChevronDown, Activity, ExternalLink, HardDrive, Calendar, Search, Plus } from 'lucide-react';
 import Settings, { AppSettings } from './Settings';
 
 interface AnomLog {
@@ -20,6 +20,18 @@ interface AnomLog {
   was_capital_spawn: number;
   was_faction_capital_spawn: number;
   was_titan_spawn: number;
+  location_region?: string;
+  location_system?: string;
+  location_security?: string;
+}
+
+interface BeltLog {
+  id: number;
+  timestamp: string;
+  was_faction_spawn: number;
+  was_hauler_spawn: number;
+  was_officer_spawn: number;
+  officer_name?: string;
   location_region?: string;
   location_system?: string;
   location_security?: string;
@@ -110,7 +122,7 @@ function getBootstrapSettings(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
-type ViewState = 'combat' | 'statistics' | 'settings';
+type ViewState = 'combat' | 'belt' | 'statistics' | 'settings';
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_IPC__' in window);
 
@@ -232,6 +244,7 @@ export default function App() {
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [logToDelete, setLogToDelete] = useState<number | null>(null);
+  const [beltLogToDelete, setBeltLogToDelete] = useState<number | null>(null);
   const [isAutoBackupModalOpen, setIsAutoBackupModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -273,6 +286,26 @@ export default function App() {
     was_faction_capital_spawn: false,
     was_titan_spawn: false,
   });
+
+  const [beltToggles, setBeltToggles] = useState({
+    was_faction_spawn: false,
+    was_hauler_spawn: false,
+    was_officer_spawn: false,
+  });
+  const [officerName, setOfficerName] = useState('');
+  const [filteredOfficers, setFilteredOfficers] = useState<string[]>([]);
+  const [beltHistory, setBeltHistory] = useState<BeltLog[]>([]);
+  const [beltRecentCount, setBeltRecentCount] = useState(0);
+  const [officerError, setOfficerError] = useState(false);
+
+  const OFFICER_LIST = [
+    'Ahremen Arkah', 'Asine Hitama', 'Brokara Ryis', 'Brynn Jerdola',
+    'Chelm Soran', 'Cormack Vaajokas', 'Draclira Merlonne', 'Estamel Tharchon',
+    'Gotan Krazman', 'Hakim Stormare', 'Kaikka Pehkun', 'Makra Ozman',
+    'Mizuro Cyvit', 'Panola Paatama', 'Ramaku Basta', 'Raysere Giant',
+    'Selynne Mardyl', 'Setele Erbe', 'Tairei Namazoth', 'Thon Enyuo',
+    'Tobias Krazman', 'Tuvan Orth', 'Usaras Koirola', 'Vepas Naari', 'Vizan Cult'
+  ];
 
   useEffect(() => {
     // Attempt to match system locale for date formatting
@@ -343,6 +376,17 @@ export default function App() {
 
     initialize();
   }, []);
+
+  useEffect(() => {
+    if (officerName.length >= 1) {
+      const filtered = OFFICER_LIST
+        .filter(name => name.toLowerCase().includes(officerName.toLowerCase()))
+        .slice(0, 10);
+      setFilteredOfficers(filtered);
+    } else {
+      setFilteredOfficers([]);
+    }
+  }, [officerName]);
 
   const loadSettings = async () => {
     try {
@@ -582,13 +626,33 @@ export default function App() {
                 location_security: bindValues![12],
               };
               this.logs.push(log);
+            } else if (query.includes('INSERT INTO belt_logs')) {
+              const log: BeltLog = {
+                id: this.idCounter++,
+                timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                was_faction_spawn: bindValues![0],
+                was_hauler_spawn: bindValues![1],
+                was_officer_spawn: bindValues![2],
+                officer_name: bindValues![3],
+                location_system: bindValues![4],
+                location_region: bindValues![5],
+                location_security: bindValues![6],
+              };
+              if (!this.beltLogs) this.beltLogs = [];
+              this.beltLogs.push(log);
             } else if (query.includes('DELETE FROM anom_logs')) {
               const id = bindValues![0];
               this.logs = this.logs.filter((l: AnomLog) => l.id !== id);
+            } else if (query.includes('DELETE FROM belt_logs')) {
+              const id = bindValues![0];
+              if (this.beltLogs) {
+                this.beltLogs = this.beltLogs.filter((l: BeltLog) => l.id !== id);
+              }
             }
             return { lastInsertId: this.idCounter, rowsAffected: 1 };
           },
           async select<T>(query: string, bindValues?: any[]): Promise<T> {
+            if (!this.beltLogs) this.beltLogs = [];
             // Helper to get local date from UTC timestamp string
             const getLocalDate = (ts: string) => {
               const d = new Date(ts + 'Z');
@@ -597,8 +661,10 @@ export default function App() {
 
             const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);
             const filtered = this.logs.filter((l: AnomLog) => l.timestamp >= twelveHoursAgo);
+            const filteredBelts = this.beltLogs.filter((l: BeltLog) => l.timestamp >= twelveHoursAgo);
 
             if (query.includes('SUM(CASE WHEN')) {
+              // ... existing anom_logs stats logic ...
               let logsToUse = [...this.logs];
               let currentParamIdx = 0;
 
@@ -637,6 +703,13 @@ export default function App() {
                 fac_cap: logsToUse.filter(l => l.was_faction_capital_spawn === 1).length,
                 titan: logsToUse.filter(l => l.was_titan_spawn === 1).length
               }] as unknown as T;
+            }
+
+            if (query.includes('FROM belt_logs')) {
+               if (query.includes('COUNT(*)')) {
+                 return [{ count: filteredBelts.length }] as unknown as T;
+               }
+               return [...filteredBelts].reverse() as unknown as T;
             }
 
             if (query.includes('LIMIT ? OFFSET ?')) {
@@ -685,9 +758,26 @@ export default function App() {
 
       setDb(database);
       fetchHistory(database);
+      fetchBeltHistory(database);
     } catch (error) {
       console.error('Failed to initialize database:', error);
       setDbError(String(error));
+    }
+  };
+
+  const fetchBeltHistory = async (database: any) => {
+    try {
+      const result = await database.select(
+        "SELECT * FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
+      );
+      setBeltHistory(result as BeltLog[]);
+
+      const countResult = await database.select(
+        "SELECT COUNT(*) as count FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours')"
+      );
+      setBeltRecentCount((countResult as any[])[0]?.count || 0);
+    } catch (error) {
+      console.error('Failed to fetch belt history:', error);
     }
   };
 
@@ -876,6 +966,53 @@ export default function App() {
     setToggles((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const logBelt = async () => {
+    if (!db) return;
+
+    if (beltToggles.was_officer_spawn && !officerName.trim()) {
+      setOfficerError(true);
+      showToast('Please enter an Officer Name');
+      playTone('delete');
+      return;
+    }
+
+    try {
+      const systemData = systemsData.find(s => s.solarSystemName.toLowerCase() === selectedSystem.toLowerCase());
+      
+      await db.execute(
+        `INSERT INTO belt_logs (
+          was_faction_spawn, was_hauler_spawn, was_officer_spawn,
+          officer_name, location_system, location_region, location_security
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          beltToggles.was_faction_spawn ? 1 : 0,
+          beltToggles.was_hauler_spawn ? 1 : 0,
+          beltToggles.was_officer_spawn ? 1 : 0,
+          beltToggles.was_officer_spawn ? officerName : null,
+          selectedSystem || null,
+          systemData?.regionName || null,
+          systemData?.security !== undefined ? systemData.security.toString() : null
+        ]
+      );
+
+      // Reset toggles
+      setBeltToggles({
+        was_faction_spawn: false,
+        was_hauler_spawn: false,
+        was_officer_spawn: false,
+      });
+      setOfficerName('');
+
+      fetchBeltHistory(db);
+      
+      playTone('log');
+      showToast('Belt successfully logged');
+    } catch (error) {
+      console.error('Failed to log belt:', error);
+      showToast('Failed to log belt');
+    }
+  };
+
   const logSite = async () => {
     if (!db) return;
 
@@ -930,19 +1067,33 @@ export default function App() {
   };
 
   const confirmDelete = async () => {
-    if (!db || logToDelete === null) return;
+    if (!db) return;
 
-    try {
-      await db.execute('DELETE FROM anom_logs WHERE id = $1', [logToDelete]);
-      setLogToDelete(null);
-      fetchHistory(db);
-      setTrackedSites(prev => prev.filter(log => log.id !== logToDelete));
-      
-      playTone('delete');
-      showToast('Log successfully deleted');
-    } catch (error) {
-      console.error('Failed to delete log:', error);
-      showToast('Failed to delete log');
+    if (logToDelete !== null) {
+      try {
+        await db.execute('DELETE FROM anom_logs WHERE id = $1', [logToDelete]);
+        setLogToDelete(null);
+        fetchHistory(db);
+        setTrackedSites(prev => prev.filter(log => log.id !== logToDelete));
+        
+        playTone('delete');
+        showToast('Log successfully deleted');
+      } catch (error) {
+        console.error('Failed to delete log:', error);
+        showToast('Failed to delete log');
+      }
+    } else if (beltLogToDelete !== null) {
+      try {
+        await db.execute('DELETE FROM belt_logs WHERE id = $1', [beltLogToDelete]);
+        setBeltLogToDelete(null);
+        fetchBeltHistory(db);
+        
+        playTone('delete');
+        showToast('Belt log successfully deleted');
+      } catch (error) {
+        console.error('Failed to delete belt log:', error);
+        showToast('Failed to delete belt log');
+      }
     }
   };
 
@@ -999,6 +1150,12 @@ export default function App() {
                 className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'statistics' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Statistics
+              </button>
+              <button 
+                onClick={() => setCurrentView('belt')}
+                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'belt' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Belt Log
               </button>
             </div>
             <button 
@@ -1287,7 +1444,174 @@ export default function App() {
               </div>
             )}
 
-            {currentView === 'statistics' && stats && (
+            {currentView === 'belt' && (
+              <div className={`flex-1 flex ${isLandscape ? 'flex-row space-x-6' : 'flex-col'} overflow-hidden`}>
+                <div className={isLandscape ? 'w-1/2 flex flex-col' : ''}>
+                  <div className="mb-4">
+                    <label className="block text-xs font-semibold text-[#f0b419] uppercase tracking-wider mb-2">
+                      System
+                    </label>
+                    <select
+                      value={selectedSystem}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedSystem(val);
+                        localStorage.setItem('anomtracker_selected_system', val);
+                      }}
+                      className="w-full bg-[#141414] border border-[#f0b419]/50 text-white p-2 rounded focus:outline-none focus:border-[#f0b419] focus:ring-1 focus:ring-[#f0b419] appearance-none"
+                    >
+                      <option value="">Select...</option>
+                      {settings.preferredSystems.map((sys) => (
+                        <option key={sys} value={sys}>
+                          {sys}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-3 mb-4">
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 border-b border-gray-800 pb-1">Special Spawns</div>
+                    <ToggleButton
+                      label="Faction Subcapital"
+                      active={beltToggles.was_faction_spawn}
+                      onClick={() => setBeltToggles(prev => ({ ...prev, was_faction_spawn: !prev.was_faction_spawn }))}
+                      color="emerald"
+                    />
+                    <ToggleButton
+                      label="Hauler NPC"
+                      active={beltToggles.was_hauler_spawn}
+                      onClick={() => setBeltToggles(prev => ({ ...prev, was_hauler_spawn: !prev.was_hauler_spawn }))}
+                      color="cyan"
+                    />
+                    <div className="flex space-x-2">
+                      <div className={beltToggles.was_officer_spawn ? "w-1/2" : "w-full"}>
+                        <ToggleButton
+                          label="Officer"
+                          active={beltToggles.was_officer_spawn}
+                          onClick={() => {
+                            const newState = !beltToggles.was_officer_spawn;
+                            setBeltToggles(prev => ({ ...prev, was_officer_spawn: newState }));
+                            if (!newState) setOfficerError(false);
+                          }}
+                          color="purple"
+                        />
+                      </div>
+                      {beltToggles.was_officer_spawn && (
+                        <div className="w-1/2 relative animate-in fade-in slide-in-from-left-2 duration-200">
+                          <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                            <Search size={12} className="text-[#bf94ff]/50" />
+                          </div>
+                          <input
+                            type="text"
+                            value={officerName}
+                            onChange={(e) => {
+                              setOfficerName(e.target.value);
+                              if (officerError) setOfficerError(false);
+                            }}
+                            placeholder="Search..."
+                            className={`w-full h-full bg-[#141414] border ${officerError ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'border-[#bf94ff]/50'} text-white pl-8 pr-2 rounded text-[11px] focus:outline-none ${officerError ? 'focus:border-red-500' : 'focus:border-[#bf94ff]'} focus:ring-1 ${officerError ? 'focus:ring-red-500' : 'focus:ring-[#bf94ff]'} transition-all duration-200`}
+                          />
+                          
+                          {filteredOfficers.length > 0 && officerName !== filteredOfficers[0] && (
+                            <div className="absolute z-30 w-full bottom-full mb-1 bg-[#1a1a1a] border border-[#bf94ff]/30 rounded shadow-xl max-h-48 overflow-y-auto">
+                              {filteredOfficers.map(name => (
+                                <button
+                                  key={name}
+                                  onClick={() => {
+                                    setOfficerName(name);
+                                    setFilteredOfficers([]);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-[#bf94ff]/10 hover:text-[#bf94ff] flex justify-between items-center group"
+                                >
+                                  <span>{name}</span>
+                                  <Plus size={12} className="opacity-0 group-hover:opacity-100" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={logBelt}
+                    disabled={!db}
+                    className="w-full py-3 bg-[#141414] border-2 border-[#f0b419] text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+                  >
+                    Log Belt
+                  </button>
+                </div>
+
+                <div className={`flex-1 flex flex-col overflow-hidden ${isLandscape ? 'border-l border-gray-800 pl-4' : ''}`}>
+                  <div className="flex items-center justify-between mb-3 border-b border-[#f0b419]/30 pb-1">
+                    <h2 className="text-xs font-semibold text-[#f0b419] uppercase tracking-wider flex items-center">
+                      Recent History
+                      <span className="text-gray-500 ml-2 font-normal">| {beltRecentCount} BELTS</span>
+                    </h2>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-2">
+                    {beltHistory.length === 0 ? (
+                      <p className="text-xs text-gray-500 italic text-center py-4">
+                        No belts logged yet.
+                      </p>
+                    ) : (
+                      beltHistory.map((log) => {
+                        const dateObj = new Date(log.timestamp + 'Z');
+                        const timeStr = isNaN(dateObj.getTime())
+                          ? log.timestamp.split(' ')[1] || log.timestamp
+                          : format(dateObj, 'HH:mm:ss');
+                        
+                        const outcomeIcons: { label: string; color: 'gold' | 'blue' | 'green' | 'emerald' | 'cyan' | 'purple' }[] = [];
+                        if (log.was_faction_spawn === 1) outcomeIcons.push({ label: 'FAC-SUB', color: 'emerald' });
+                        if (log.was_hauler_spawn === 1) outcomeIcons.push({ label: 'Hauler', color: 'cyan' });
+                        if (log.was_officer_spawn === 1) outcomeIcons.push({ label: `Officer: ${log.officer_name || 'Unknown'}`, color: 'purple' });
+
+                        return (
+                          <div
+                            key={log.id}
+                            className="flex items-center justify-between bg-[#141414] border border-gray-800 p-2 rounded text-xs group"
+                          >
+                            <div className="flex-1 truncate pr-2">
+                              <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                              <span className="text-gray-200 font-medium">
+                                {log.location_system || 'Unknown System'}
+                              </span>
+                              {outcomeIcons.length > 0 && (
+                                <span className="ml-2">
+                                  <span className="text-gray-500 mr-1">-</span>
+                                  {outcomeIcons.map((icon, idx) => (
+                                    <span key={idx}>
+                                      <span className={`text-[10px] tracking-wider ${
+                                        icon.color === 'emerald' ? 'text-[#50c878]' : 
+                                        icon.color === 'cyan' ? 'text-[#00ffff]' : 
+                                        icon.color === 'purple' ? 'text-[#bf94ff]' : 
+                                        'text-[#f0b419]'
+                                      }`}>
+                                        {icon.label}
+                                      </span>
+                                      {idx < outcomeIcons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => setBeltLogToDelete(log.id)}
+                              className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                              title="Delete log"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+{currentView === 'statistics' && stats && (
               <div className="flex-1 overflow-y-auto pt-[5px] px-6 pb-2 space-y-6 animate-in fade-in duration-500">
                 {/* Filter Header */}
                 <div className="flex items-center justify-end mb-2 space-x-6">
@@ -1522,7 +1846,7 @@ export default function App() {
           </div>
 
       {/* Confirmation Modal */}
-      {logToDelete !== null && (
+      {(logToDelete !== null || beltLogToDelete !== null) && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-[#141414] border border-[#f0b419]/50 rounded-lg p-5 w-full max-w-[300px] shadow-2xl">
             <h3 className="text-[#f0b419] font-bold text-lg mb-2">Delete Log?</h3>
@@ -1531,7 +1855,10 @@ export default function App() {
             </p>
             <div className="flex justify-end space-x-3">
               <button
-                onClick={() => setLogToDelete(null)}
+                onClick={() => {
+                  setLogToDelete(null);
+                  setBeltLogToDelete(null);
+                }}
                 className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
               >
                 Cancel
@@ -1729,7 +2056,7 @@ function ToggleButton({
   label: string;
   active: boolean;
   onClick: () => void;
-  color?: 'gold' | 'blue' | 'green';
+  color?: 'gold' | 'blue' | 'green' | 'emerald' | 'cyan' | 'purple';
 }) {
   const baseClasses =
     'w-full py-2 px-1 text-xs font-semibold uppercase tracking-wider rounded border transition-all duration-200 text-center cursor-pointer';
@@ -1743,6 +2070,18 @@ function ToggleButton({
       ? active
         ? 'bg-[#00ff7f]/20 border-[#00ff7f] text-[#00ff7f] shadow-[0_0_10px_rgba(0,255,127,0.4)]'
         : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00ff7f]/50 hover:text-gray-300'
+      : color === 'emerald'
+      ? active
+        ? 'bg-[#50c878]/20 border-[#50c878] text-[#50c878] shadow-[0_0_10px_rgba(80,200,120,0.4)]'
+        : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#50c878]/50 hover:text-gray-300'
+      : color === 'cyan'
+      ? active
+        ? 'bg-[#00ffff]/20 border-[#00ffff] text-[#00ffff] shadow-[0_0_10px_rgba(0,255,255,0.4)]'
+        : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00ffff]/50 hover:text-gray-300'
+      : color === 'purple'
+      ? active
+        ? 'bg-[#bf94ff]/20 border-[#bf94ff] text-[#bf94ff] shadow-[0_0_10px_rgba(191,148,255,0.4)]'
+        : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#bf94ff]/50 hover:text-gray-300'
       : active
       ? 'bg-[#00e5ff]/20 border-[#00e5ff] text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.4)]'
       : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00e5ff]/50 hover:text-gray-300';
