@@ -2,7 +2,7 @@
   <img src="public/app-icon.jpg" alt="EVE AnomTracker">
 </div>
 
-A premium, lightweight desktop overlay for EVE Online players to track combat anomaly outcomes with precision and style.
+A premium, lightweight desktop application for EVE Online players to track combat anomaly outcomes with precision and style.
 
 ## 🚀 Key Features
 
