@@ -6,6 +6,7 @@ import Database from '@tauri-apps/plugin-sql';
 import { format, subDays } from 'date-fns';
 import { Trash2, Menu, X, Crosshair, BarChart2, Settings as SettingsIcon, Minus, ChevronUp, ChevronDown, Activity, ExternalLink, HardDrive, Calendar, Search, Plus } from 'lucide-react';
 import Settings, { AppSettings } from './Settings';
+import { useGlobalHotkeys } from './hooks/useGlobalHotkeys';
 
 interface AnomLog {
   id: number;
@@ -110,6 +111,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   backupPath: '',
   autoBackupFrequency: 'off',
   preferredSystems: [],
+  logShortcut: 'CommandOrControl+Shift+L',
 };
 
 // Bootstrap key layout settings synchronously from localStorage to avoid
@@ -297,6 +299,23 @@ export default function App() {
   const [beltHistory, setBeltHistory] = useState<BeltLog[]>([]);
   const [beltRecentCount, setBeltRecentCount] = useState(0);
   const [officerError, setOfficerError] = useState(false);
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  // Global hotkey integration
+  const handleGlobalLog = () => {
+    // Determine which action to trigger based on the active tab
+    if (currentView === 'combat') {
+      submitSiteLog();
+    } else if (currentView === 'belt') {
+      submitBeltLog();
+    }
+    
+    // Provide visual feedback
+    setIsFlashing(true);
+    setTimeout(() => setIsFlashing(false), 200);
+  };
+
+  useGlobalHotkeys(handleGlobalLog, settings.logShortcut);
 
   const OFFICER_LIST = [
     'Ahremen Arkah', 'Asine Hitama', 'Brokara Ryis', 'Brynn Jerdola',
@@ -966,7 +985,7 @@ export default function App() {
     setToggles((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const logBelt = async () => {
+  const submitBeltLog = async () => {
     if (!db) return;
 
     if (beltToggles.was_officer_spawn && !officerName.trim()) {
@@ -1013,7 +1032,7 @@ export default function App() {
     }
   };
 
-  const logSite = async () => {
+  const submitSiteLog = async () => {
     if (!db) return;
 
     try {
@@ -1299,9 +1318,11 @@ export default function App() {
 
                   {!isLandscape && (
                     <button
-                      onClick={logSite}
+                      onClick={submitSiteLog}
                       disabled={!db}
-                      className="w-full py-3 bg-[#141414] border-2 border-[#f0b419] text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+                      className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${
+                        isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
+                      }`}
                     >
                       Log Site
                     </button>
@@ -1370,9 +1391,11 @@ export default function App() {
                         </div>
                       )}
                       <button
-                        onClick={logSite}
+                        onClick={submitSiteLog}
                         disabled={!db}
-                        className="w-full py-3 bg-[#141414] border-2 border-[#f0b419] text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+                        className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${
+                          isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
+                        }`}
                       >
                         Log Site
                       </button>
@@ -1535,9 +1558,11 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={logBelt}
+                    onClick={submitBeltLog}
                     disabled={!db}
-                    className="w-full py-3 bg-[#141414] border-2 border-[#f0b419] text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+                    className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${
+                      isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
+                    }`}
                   >
                     Log Belt
                   </button>

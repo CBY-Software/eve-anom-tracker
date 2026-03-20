@@ -1,0 +1,27 @@
+{
+  "identifier": "main-capability",
+  "description": "Main capability for the application",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "window-state:default",
+    "core:window:allow-minimize",
+    "core:window:allow-close",
+    "core:window:allow-show",
+    "core:window:allow-start-dragging",
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "fs:default",
+    "dialog:default",
+    "fs:allow-write",
+    "fs:allow-read",
+    "fs:allow-copy-file",
+    "fs:allow-mkdir",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-is-registered",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-unregister-all"
+  ]
+}

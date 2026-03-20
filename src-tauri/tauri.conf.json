@@ -24,32 +24,7 @@
       }
     ],
     "security": {
-      "csp": null,
-      "capabilities": [
-        {
-          "identifier": "default",
-          "description": "Default capability",
-          "windows": ["main"],
-          "permissions": [
-            "core:default",
-            "window-state:default",
-            "core:window:allow-minimize",
-            "core:window:allow-close",
-            "core:window:allow-show",
-            "core:window:allow-start-dragging",
-            "sql:default",
-            "sql:allow-load",
-            "sql:allow-execute",
-            "sql:allow-select",
-            "fs:default",
-            "dialog:default",
-            "fs:allow-write",
-            "fs:allow-read",
-            "fs:allow-copy-file",
-            "fs:allow-mkdir"
-          ]
-        }
-      ]
+      "csp": null
     }
   },
   "bundle": {
