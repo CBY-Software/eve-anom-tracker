@@ -66,11 +66,11 @@ interface StatsData {
 const StatCard = ({ label, count, total, color, highlighted = false, className = "" }: { label: string, count: number, total: number, color: 'green' | 'blue', highlighted?: boolean, className?: string }) => {
   const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
   const colorClass = color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]';
-  const borderColor = highlighted 
+  const borderColor = highlighted
     ? (color === 'green' ? 'border-[#00ff7f]/60' : 'border-[#00e5ff]/60')
     : (color === 'green' ? 'border-[#00ff7f]/20' : 'border-[#00e5ff]/20');
   const bgHover = color === 'green' ? 'hover:bg-[#00ff7f]/5' : 'hover:bg-[#00e5ff]/5';
-  const bgClass = highlighted 
+  const bgClass = highlighted
     ? (color === 'green' ? 'bg-[#00ff7f]/5' : 'bg-[#00e5ff]/5')
     : 'bg-[#141414]';
   const shadowClass = highlighted
@@ -120,7 +120,7 @@ function getBootstrapSettings(): AppSettings {
   try {
     const cached = localStorage.getItem('anomtracker_bootstrap');
     if (cached) return { ...DEFAULT_SETTINGS, ...JSON.parse(cached) };
-  } catch {}
+  } catch { }
   return DEFAULT_SETTINGS;
 }
 
@@ -140,11 +140,11 @@ const Titlebar = ({ isCollapsed, onToggleCollapse }: { isCollapsed: boolean, onT
   };
 
   return (
-    <div 
+    <div
       className="h-[28px] bg-[#050505] flex items-center border-b border-[#333] select-none shrink-0 overflow-hidden"
     >
       {/* Dedicated Drag Area with Title */}
-      <div 
+      <div
         data-tauri-drag-region
         onMouseDown={handleMouseDown}
         className="flex-1 h-full cursor-default flex items-center px-3"
@@ -156,24 +156,23 @@ const Titlebar = ({ isCollapsed, onToggleCollapse }: { isCollapsed: boolean, onT
 
       {/* Window Controls */}
       <div className="flex h-full shrink-0">
-        <button 
+        <button
           onClick={onToggleCollapse}
-          className={`h-full px-3 flex items-center justify-center transition-colors ${
-            isCollapsed 
-              ? "bg-[#f0b419] text-[#0a0a0a]" 
-              : "text-gray-500 hover:bg-[#f0b419] hover:text-[#0a0a0a]"
-          }`}
+          className={`h-full px-3 flex items-center justify-center transition-colors ${isCollapsed
+            ? "bg-[#f0b419] text-[#0a0a0a]"
+            : "text-gray-500 hover:bg-[#f0b419] hover:text-[#0a0a0a]"
+            }`}
           title={isCollapsed ? "Expand" : "Collapse"}
         >
           {isCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </button>
-        <button 
+        <button
           onClick={() => isTauri && appWindow?.minimize()}
           className="h-full px-3 flex items-center justify-center hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-colors text-gray-500"
         >
           <Minus size={14} />
         </button>
-        <button 
+        <button
           onClick={() => isTauri && appWindow?.close()}
           className="h-full px-3 flex items-center justify-center hover:bg-red-600 hover:text-white transition-colors text-gray-500"
         >
@@ -192,7 +191,7 @@ const Splash = () => {
   };
 
   return (
-    <div 
+    <div
       className="absolute inset-0 bg-[radial-gradient(circle,#1a1a1a_0%,#050505_100%)] flex flex-col items-center justify-center overflow-hidden z-[9999]"
       onMouseDown={handleMouseDown}
       data-tauri-drag-region
@@ -220,7 +219,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(getBootstrapSettings());
   const [currentView, setCurrentView] = useState<ViewState>('combat');
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
+
   const siteTypes = settings.customSites
     ? settings.customSites.split(',').map(s => s.trim()).filter(Boolean)
     : DEFAULT_SITE_TYPES;
@@ -249,17 +248,36 @@ export default function App() {
   const [beltLogToDelete, setBeltLogToDelete] = useState<number | null>(null);
   const [isAutoBackupModalOpen, setIsAutoBackupModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{ latest: string, current: string } | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string>('0.0.0');
+  const [isUpdateDismissed, setIsUpdateDismissed] = useState(false);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [systemDateFormat, setSystemDateFormat] = useState<string>('yyyy-MM-dd');
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, duration = 3000) => {
     setToastMessage(message);
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
     }
-    toastTimeoutRef.current = setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
+    if (duration > 0) {
+      toastTimeoutRef.current = setTimeout(() => {
+        setToastMessage(null);
+      }, duration);
+    }
+  };
+
+  const handleOpenUrl = async (url: string) => {
+    try {
+      if (isTauri) {
+        await invoke('plugin:shell|open', { path: url });
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch (e) {
+      console.error('Failed to open URL:', e);
+      showToast('Failed to open browser');
+    }
   };
 
   // Format a yyyy-MM-dd string using the actual OS date format from Windows registry
@@ -309,7 +327,7 @@ export default function App() {
     } else if (currentView === 'belt') {
       submitBeltLog();
     }
-    
+
     // Provide visual feedback
     setIsFlashing(true);
     setTimeout(() => setIsFlashing(false), 200);
@@ -360,6 +378,11 @@ export default function App() {
         if (isTauri) {
           await loadSettings();
           setIsSettingsLoaded(true);
+          
+          const { getVersion } = await import('@tauri-apps/api/app');
+          const v = await getVersion();
+          setAppVersion(v);
+
           // Give the OS and React a moment to apply the new window size and layout
           await new Promise(resolve => setTimeout(resolve, 150));
           try {
@@ -407,6 +430,80 @@ export default function App() {
     }
   }, [officerName]);
 
+  const compareVersions = (latest: string, current: string) => {
+    const lParts = latest.split('.').map(Number);
+    const cParts = current.split('.').map(Number);
+    for (let i = 0; i < Math.max(lParts.length, cParts.length); i++) {
+      const l = lParts[i] || 0;
+      const c = cParts[i] || 0;
+      if (l > c) return 1;
+      if (l < c) return -1;
+    }
+    return 0;
+  };
+
+  const checkForUpdates = async () => {
+    setUpdateError(null);
+    console.log('Update Check: Starting...');
+    try {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      const v = await getVersion();
+      setAppVersion(v);
+
+      // Temporarily hardcode for testing
+      const currentVersion = '0.1.0';
+
+      const response = await fetch('https://api.github.com/repos/CBY-Software/eve-anom-tracker/releases/latest');
+      
+      if (!response.ok) {
+        const status = response.status;
+        console.error(`Update Check: Fetch failed with status ${status}`);
+        if (status === 404) {
+          const repoResp = await fetch('https://api.github.com/repos/CBY-Software/eve-anom-tracker');
+          if (repoResp.ok) {
+            setUpdateError('No releases published yet');
+          } else {
+            setUpdateError('Repository not found or private');
+          }
+        } else {
+          setUpdateError(`HTTP Error: ${status}`);
+        }
+        return;
+      }
+
+      const data = await response.json();
+      if (!data.tag_name) {
+        console.error('Update Check: No tag_name in response');
+        setUpdateError('Invalid API Response');
+        return;
+      }
+
+      const latestVersion = data.tag_name.replace(/^v/, '');
+      console.log(`Update Check: Latest=${latestVersion}, Local(Test)=${currentVersion}`);
+
+      if (latestVersion !== currentVersion && compareVersions(latestVersion, currentVersion) > 0) {
+        console.log('Update Check: NEW VERSION DETECTED');
+        setUpdateInfo({ latest: latestVersion, current: currentVersion });
+        showToast(`Update Available: ${latestVersion} (Current: ${currentVersion})`, 6000);
+      } else {
+        console.log('Update Check: App is up to date');
+        setUpdateInfo(null);
+      }
+    } catch (error) {
+      console.error('Update Check: Error', error);
+      setUpdateError(error instanceof Error ? error.message : 'Connection Error');
+    }
+  };
+
+  // Check for updates on startup
+  useEffect(() => {
+    if (!isAppReady || !isTauri) return;
+
+    // Check slightly after startup
+    const timer = setTimeout(checkForUpdates, 4500);
+    return () => clearTimeout(timer);
+  }, [isAppReady]);
+
   const loadSettings = async () => {
     try {
       if (!isTauri) {
@@ -416,11 +513,11 @@ export default function App() {
 
       const settingsJson = await invoke<string>('load_settings');
       const loadedSettings = JSON.parse(settingsJson);
-      
+
       const newSettings = { ...DEFAULT_SETTINGS, ...loadedSettings };
       setSettings(newSettings);
       await applySettings(newSettings);
-      
+
       // Persist layout-critical settings so first render can bootstrap without flicker
       localStorage.setItem('anomtracker_bootstrap', JSON.stringify({
         orientation: newSettings.orientation,
@@ -428,7 +525,7 @@ export default function App() {
         windowOpacity: newSettings.windowOpacity,
         alwaysOnTop: newSettings.alwaysOnTop,
       }));
-      
+
       // Check for auto-backup after settings are loaded
       if (isTauri) {
         checkAutoBackup(newSettings);
@@ -442,7 +539,7 @@ export default function App() {
   const saveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
     applySettings(newSettings);
-    
+
     // Keep the bootstrap cache up to date so next launch is flicker-free
     localStorage.setItem('anomtracker_bootstrap', JSON.stringify({
       orientation: newSettings.orientation,
@@ -450,7 +547,7 @@ export default function App() {
       windowOpacity: newSettings.windowOpacity,
       alwaysOnTop: newSettings.alwaysOnTop,
     }));
-    
+
     try {
       if (isTauri) {
         await invoke('save_settings', { settings: JSON.stringify(newSettings) });
@@ -463,7 +560,7 @@ export default function App() {
   const getDateRange = (type: string, customStart: string, customEnd: string) => {
     const now = new Date();
     const today = format(now, 'yyyy-MM-dd');
-    
+
     switch (type) {
       case 'Today':
         return { start: today, end: today };
@@ -488,17 +585,17 @@ export default function App() {
       if (isTauri) {
         let width = s.orientation === 'portrait' ? 360 : 700;
         let height = s.orientation === 'portrait' ? 725 : 450;
-        
+
         if (currentView === 'statistics' || currentView === 'settings') {
           width = 800;
           height = 825;
         }
-        
+
         if (isCollapsed) {
           height = 28;
         }
 
-        await invoke('apply_window_settings', { 
+        await invoke('apply_window_settings', {
           alwaysOnTop: s.alwaysOnTop,
           scale: (currentView === 'statistics' || currentView === 'settings') ? 1.0 : s.globalScale,
           width,
@@ -535,14 +632,14 @@ export default function App() {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
-      
+
       const ctx = new AudioContextClass();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      
+
       osc.connect(gain);
       gain.connect(ctx.destination);
-      
+
       if (type === 'log') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
@@ -570,13 +667,13 @@ export default function App() {
 
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
-    
+
     if (currentSettings.lastAutoBackup === todayStr) return; // Already backed up today
 
     const lastBackupStr = currentSettings.lastAutoBackup || '1970-01-01';
     const lastBackupDate = new Date(lastBackupStr);
     const nowDate = new Date(todayStr);
-    
+
     const diffMs = nowDate.getTime() - lastBackupDate.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
@@ -594,16 +691,16 @@ export default function App() {
 
         const dbFile = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db' });
         const settingsFile = await invoke<string>('join_paths', { base: dataDir, sub: 'settings.json' });
-        
-        await invoke('create_backup_zip', { 
-          srcFiles: [dbFile, settingsFile], 
-          destZip: backupDest 
+
+        await invoke('create_backup_zip', {
+          srcFiles: [dbFile, settingsFile],
+          destZip: backupDest
         });
 
         // Update last backup date
         const updatedSettings = { ...currentSettings, lastAutoBackup: todayStr };
         await saveSettings(updatedSettings);
-        
+
         setIsAutoBackupModalOpen(true);
       } catch (error) {
         console.error('Auto-backup failed:', error);
@@ -621,7 +718,7 @@ export default function App() {
       } else {
         console.warn('Not running in Tauri environment. Using mock database.');
         setDbError('Web Preview Mode: Data will not persist across reloads.');
-        
+
         database = {
           logs: [] as AnomLog[],
           idCounter: 1,
@@ -703,12 +800,12 @@ export default function App() {
               }
 
               const total = logsToUse.length;
-              const successful = logsToUse.filter(l => 
-                l.was_ded_escalation === 1 || l.was_occ_mine_escalation === 1 || l.was_cap_stag_escalation === 1 || 
-                l.was_shld_starb_escalation === 1 || l.was_attack_site_escalation === 1 || l.was_faction_npc_spawn === 1 || 
+              const successful = logsToUse.filter(l =>
+                l.was_ded_escalation === 1 || l.was_occ_mine_escalation === 1 || l.was_cap_stag_escalation === 1 ||
+                l.was_shld_starb_escalation === 1 || l.was_attack_site_escalation === 1 || l.was_faction_npc_spawn === 1 ||
                 l.was_capital_spawn === 1 || l.was_faction_capital_spawn === 1 || l.was_titan_spawn === 1
               ).length;
-              
+
               return [{
                 total,
                 successful,
@@ -725,10 +822,10 @@ export default function App() {
             }
 
             if (query.includes('FROM belt_logs')) {
-               if (query.includes('COUNT(*)')) {
-                 return [{ count: filteredBelts.length }] as unknown as T;
-               }
-               return [...filteredBelts].reverse() as unknown as T;
+              if (query.includes('COUNT(*)')) {
+                return [{ count: filteredBelts.length }] as unknown as T;
+              }
+              return [...filteredBelts].reverse() as unknown as T;
             }
 
             if (query.includes('LIMIT ? OFFSET ?')) {
@@ -816,7 +913,7 @@ export default function App() {
         "SELECT * FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
       );
       setFullHistory(fullResult as AnomLog[]);
-      
+
       if (currentView === 'statistics') {
         fetchStats(database, statsFilter);
       }
@@ -837,13 +934,13 @@ export default function App() {
         WHERE timestamp >= date('now', 'localtime', '-30 days')
       `;
       const dailyParams: any[] = [];
-      
+
       if (filter !== 'All') {
         dailyQuery += " AND site_type = ?";
         dailyParams.push(filter);
       }
       dailyQuery += " GROUP BY date(timestamp, 'localtime') ORDER BY date ASC";
-      
+
       const dailyResult = await database.select(dailyQuery, dailyParams);
       setDailyStats(dailyResult as DailyStat[]);
 
@@ -862,10 +959,10 @@ export default function App() {
           SUM(was_titan_spawn) as titan
         FROM anom_logs
       `;
-      
+
       const params: any[] = [];
       const conditions: string[] = [];
-      
+
       if (filter !== 'All') {
         conditions.push("site_type = ?");
         params.push(filter);
@@ -886,7 +983,7 @@ export default function App() {
       }
 
       const result = await database.select(query, params);
-      
+
       const row = (result as any[])[0];
       if (!row || row.total === 0) {
         setStats({
@@ -997,7 +1094,7 @@ export default function App() {
 
     try {
       const systemData = systemsData.find(s => s.solarSystemName.toLowerCase() === selectedSystem.toLowerCase());
-      
+
       await db.execute(
         `INSERT INTO belt_logs (
           was_faction_spawn, was_hauler_spawn, was_officer_spawn,
@@ -1023,7 +1120,7 @@ export default function App() {
       setOfficerName('');
 
       fetchBeltHistory(db);
-      
+
       playTone('log');
       showToast('Belt successfully logged');
     } catch (error) {
@@ -1037,7 +1134,7 @@ export default function App() {
 
     try {
       const systemData = systemsData.find(s => s.solarSystemName.toLowerCase() === selectedSystem.toLowerCase());
-      
+
       await db.execute(
         `INSERT INTO anom_logs (
           site_type, was_ded_escalation, was_occ_mine_escalation, was_cap_stag_escalation,
@@ -1076,7 +1173,7 @@ export default function App() {
       });
 
       fetchHistory(db);
-      
+
       playTone('log');
       showToast('Site successfully logged');
     } catch (error) {
@@ -1094,7 +1191,7 @@ export default function App() {
         setLogToDelete(null);
         fetchHistory(db);
         setTrackedSites(prev => prev.filter(log => log.id !== logToDelete));
-        
+
         playTone('delete');
         showToast('Log successfully deleted');
       } catch (error) {
@@ -1106,7 +1203,7 @@ export default function App() {
         await db.execute('DELETE FROM belt_logs WHERE id = $1', [beltLogToDelete]);
         setBeltLogToDelete(null);
         fetchBeltHistory(db);
-        
+
         playTone('delete');
         showToast('Belt log successfully deleted');
       } catch (error) {
@@ -1141,12 +1238,12 @@ export default function App() {
   const appHeight = isCollapsed ? 28 : ((isStatistics || isSettings) ? 825 : (isLandscape ? 450 : 725));
 
   return (
-    <div 
+    <div
       className="bg-[#0a0a0a] text-gray-300 font-sans flex flex-col overflow-hidden select-none origin-top-left outline-none relative"
-      style={{ 
-        width: `${appWidth}px`, 
+      style={{
+        width: `${appWidth}px`,
         height: `${appHeight}px`,
-        transform: `scale(${(isStatistics || isSettings) ? 1 : settings.globalScale})`, 
+        transform: `scale(${(isStatistics || isSettings) ? 1 : settings.globalScale})`,
         opacity: (isStatistics || isSettings) ? 1.0 : settings.windowOpacity,
         border: '1px solid #0a0a0a',
         boxSizing: 'border-box',
@@ -1158,26 +1255,26 @@ export default function App() {
           <Titlebar isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />
           <header className="px-4 py-2 border-b border-[#f0b419]/10 flex justify-between items-center relative z-20 bg-[#0a0a0a]">
             <div className="flex space-x-6">
-              <button 
+              <button
                 onClick={() => setCurrentView('combat')}
                 className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'combat' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Combat Log
               </button>
-              <button 
+              <button
                 onClick={() => setCurrentView('statistics')}
                 className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'statistics' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Statistics
               </button>
-              <button 
+              <button
                 onClick={() => setCurrentView('belt')}
                 className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'belt' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Belt Log
               </button>
             </div>
-            <button 
+            <button
               onClick={() => setCurrentView('settings')}
               className={`transition-colors p-1 ${currentView === 'settings' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-[#f0b419]'}`}
               title="Settings"
@@ -1320,9 +1417,8 @@ export default function App() {
                     <button
                       onClick={submitSiteLog}
                       disabled={!db}
-                      className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${
-                        isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
-                      }`}
+                      className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
+                        }`}
                     >
                       Log Site
                     </button>
@@ -1393,9 +1489,8 @@ export default function App() {
                       <button
                         onClick={submitSiteLog}
                         disabled={!db}
-                        className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${
-                          isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
-                        }`}
+                        className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
+                          }`}
                       >
                         Log Site
                       </button>
@@ -1424,7 +1519,7 @@ export default function App() {
                         const timeStr = isNaN(dateObj.getTime())
                           ? log.timestamp.split(' ')[1] || log.timestamp
                           : format(dateObj, 'HH:mm:ss');
-                        
+
                         const icons = getActiveIcons(log);
 
                         return (
@@ -1534,7 +1629,7 @@ export default function App() {
                             placeholder="Search..."
                             className={`w-full h-full bg-[#141414] border ${officerError ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'border-[#bf94ff]/50'} text-white pl-8 pr-2 rounded text-[11px] focus:outline-none ${officerError ? 'focus:border-red-500' : 'focus:border-[#bf94ff]'} focus:ring-1 ${officerError ? 'focus:ring-red-500' : 'focus:ring-[#bf94ff]'} transition-all duration-200`}
                           />
-                          
+
                           {filteredOfficers.length > 0 && officerName !== filteredOfficers[0] && (
                             <div className="absolute z-30 w-full bottom-full mb-1 bg-[#1a1a1a] border border-[#bf94ff]/30 rounded shadow-xl max-h-48 overflow-y-auto">
                               {filteredOfficers.map(name => (
@@ -1560,9 +1655,8 @@ export default function App() {
                   <button
                     onClick={submitBeltLog}
                     disabled={!db}
-                    className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${
-                      isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
-                    }`}
+                    className={`w-full py-3 bg-[#141414] border-2 text-[#f0b419] font-bold text-lg uppercase tracking-widest rounded transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.3)] hover:shadow-[0_0_25px_rgba(240,180,25,0.6)] disabled:opacity-50 disabled:cursor-not-allowed mb-4 ${isFlashing ? 'border-[#00ff7f] shadow-[0_0_30px_rgba(0,255,127,0.8)] scale-[1.02]' : 'border-[#f0b419] hover:bg-[#f0b419] hover:text-[#0a0a0a]'
+                      }`}
                   >
                     Log Belt
                   </button>
@@ -1586,7 +1680,7 @@ export default function App() {
                         const timeStr = isNaN(dateObj.getTime())
                           ? log.timestamp.split(' ')[1] || log.timestamp
                           : format(dateObj, 'HH:mm:ss');
-                        
+
                         const outcomeIcons: { label: string; color: 'gold' | 'blue' | 'green' | 'emerald' | 'cyan' | 'purple' }[] = [];
                         if (log.was_faction_spawn === 1) outcomeIcons.push({ label: 'FAC-SUB', color: 'emerald' });
                         if (log.was_hauler_spawn === 1) outcomeIcons.push({ label: 'Hauler', color: 'cyan' });
@@ -1607,12 +1701,11 @@ export default function App() {
                                   <span className="text-gray-500 mr-1">-</span>
                                   {outcomeIcons.map((icon, idx) => (
                                     <span key={idx}>
-                                      <span className={`text-[10px] tracking-wider ${
-                                        icon.color === 'emerald' ? 'text-[#50c878]' : 
-                                        icon.color === 'cyan' ? 'text-[#00ffff]' : 
-                                        icon.color === 'purple' ? 'text-[#bf94ff]' : 
-                                        'text-[#f0b419]'
-                                      }`}>
+                                      <span className={`text-[10px] tracking-wider ${icon.color === 'emerald' ? 'text-[#50c878]' :
+                                        icon.color === 'cyan' ? 'text-[#00ffff]' :
+                                          icon.color === 'purple' ? 'text-[#bf94ff]' :
+                                            'text-[#f0b419]'
+                                        }`}>
                                         {icon.label}
                                       </span>
                                       {idx < outcomeIcons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
@@ -1636,7 +1729,7 @@ export default function App() {
                 </div>
               </div>
             )}
-{currentView === 'statistics' && stats && (
+            {currentView === 'statistics' && stats && (
               <div className="flex-1 overflow-y-auto pt-[5px] px-6 pb-2 space-y-6 animate-in fade-in duration-500">
                 {/* Filter Header */}
                 <div className="flex items-center justify-end mb-2 space-x-6">
@@ -1663,43 +1756,43 @@ export default function App() {
                     >
                       <option value="All">All Time</option>
                       <option value="Today">Today</option>
-                       <option value="Yesterday">Yesterday</option>
-                       <option value="Week">Last Week</option>
-                       <option value="Month">Last Month</option>
-                       <option value="Custom">Custom Range</option>
-                     </select>
-                   </div>
- 
-                   {dateRangeType === 'Custom' && (
-                     <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-right-2 duration-300">
-                       <div className="relative group">
-                         <input
-                           type="date"
-                           value={customStartDate}
-                           onChange={(e) => setCustomStartDate(e.target.value)}
-                           className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                         />
-                         <div className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-[10px] p-1.5 rounded w-[89px] flex justify-between items-center group-hover:border-[#f0b419] transition-colors">
-                           <span>{customStartDate ? formatLocalDate(customStartDate) : 'From...'}</span>
-                           <Calendar size={10} className="opacity-50" />
-                         </div>
-                       </div>
-                       <span className="text-gray-500 text-[10px]">to</span>
-                       <div className="relative group">
-                         <input
-                           type="date"
-                           value={customEndDate}
-                           onChange={(e) => setCustomEndDate(e.target.value)}
-                           className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                         />
-                         <div className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-[10px] p-1.5 rounded w-[89px] flex justify-between items-center group-hover:border-[#f0b419] transition-colors">
-                           <span>{customEndDate ? formatLocalDate(customEndDate) : 'To...'}</span>
-                           <Calendar size={10} className="opacity-50" />
-                         </div>
-                       </div>
-                     </div>
-                   )}
-                 </div>
+                      <option value="Yesterday">Yesterday</option>
+                      <option value="Week">Last Week</option>
+                      <option value="Month">Last Month</option>
+                      <option value="Custom">Custom Range</option>
+                    </select>
+                  </div>
+
+                  {dateRangeType === 'Custom' && (
+                    <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-right-2 duration-300">
+                      <div className="relative group">
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                        />
+                        <div className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-[10px] p-1.5 rounded w-[89px] flex justify-between items-center group-hover:border-[#f0b419] transition-colors">
+                          <span>{customStartDate ? formatLocalDate(customStartDate) : 'From...'}</span>
+                          <Calendar size={10} className="opacity-50" />
+                        </div>
+                      </div>
+                      <span className="text-gray-500 text-[10px]">to</span>
+                      <div className="relative group">
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                        />
+                        <div className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-[10px] p-1.5 rounded w-[89px] flex justify-between items-center group-hover:border-[#f0b419] transition-colors">
+                          <span>{customEndDate ? formatLocalDate(customEndDate) : 'To...'}</span>
+                          <Calendar size={10} className="opacity-50" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Header Stats */}
                 <div className="grid grid-cols-2 gap-6">
@@ -1714,7 +1807,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex justify-end">
-                      <button 
+                      <button
                         onClick={() => {
                           setIsTrackedSitesModalOpen(true);
                           fetchTrackedSites(true);
@@ -1798,32 +1891,32 @@ export default function App() {
                     <div className="h-[80px] flex items-end space-x-1">
                       {(() => {
                         const days = Array.from({ length: 30 }).map((_, i) => {
-                           const d = new Date();
-                           d.setDate(d.getDate() - (29 - i));
-                           return format(d, 'yyyy-MM-dd');
+                          const d = new Date();
+                          d.setDate(d.getDate() - (29 - i));
+                          return format(d, 'yyyy-MM-dd');
                         });
                         const maxCount = Math.max(...dailyStats.map(d => d.count), 1);
-                        
-                         return days.map((dayStr, index) => {
-                           const stat = dailyStats.find(s => s.date === dayStr);
-                           const count = stat ? stat.count : 0;
-                           const maxCountVal = Math.max(...dailyStats.map(d => d.count), 1);
-                           const heightPerc = (count / maxCountVal) * 100;
-                           
-                           const isLeftEdge = index === 0;
-                           const isRightEdge = index === 29;
-                           
-                           return (
-                             <div 
-                               key={dayStr} 
-                               className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-pointer"
-                               onClick={() => {
-                                 setDateRangeType('Custom');
-                                 setCustomStartDate(dayStr);
-                                 setCustomEndDate(dayStr);
-                               }}
-                             >
-                               <div className={`absolute -top-16 ${isLeftEdge ? 'left-0' : isRightEdge ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${isLeftEdge ? 'items-start' : isRightEdge ? 'items-end' : 'items-center'} min-w-[120px]`}>
+
+                        return days.map((dayStr, index) => {
+                          const stat = dailyStats.find(s => s.date === dayStr);
+                          const count = stat ? stat.count : 0;
+                          const maxCountVal = Math.max(...dailyStats.map(d => d.count), 1);
+                          const heightPerc = (count / maxCountVal) * 100;
+
+                          const isLeftEdge = index === 0;
+                          const isRightEdge = index === 29;
+
+                          return (
+                            <div
+                              key={dayStr}
+                              className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-pointer"
+                              onClick={() => {
+                                setDateRangeType('Custom');
+                                setCustomStartDate(dayStr);
+                                setCustomEndDate(dayStr);
+                              }}
+                            >
+                              <div className={`absolute -top-16 ${isLeftEdge ? 'left-0' : isRightEdge ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${isLeftEdge ? 'items-start' : isRightEdge ? 'items-end' : 'items-center'} min-w-[120px]`}>
                                 <span className="font-bold border-b border-[#f0b419]/30 pb-1 mb-1 w-full text-center">{format(new Date(dayStr), 'EEEE, MMM dd')}</span>
                                 <div className="flex flex-col w-full space-y-0.5">
                                   <div className="flex justify-between items-center space-x-4">
@@ -1845,7 +1938,7 @@ export default function App() {
                                   {count}
                                 </div>
                               )}
-                              <div 
+                              <div
                                 className={`w-full transition-all duration-300 rounded-t-[2px] ${count > 0 ? 'bg-[#f0b419]/60 group-hover:bg-[#f0b419] shadow-[0_0_8px_rgba(240,180,25,0.4)]' : 'bg-[#f0b419]/10'}`}
                                 style={{ height: count > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
                               ></div>
@@ -1860,7 +1953,16 @@ export default function App() {
             )}
 
             {currentView === 'settings' && (
-              <Settings settings={settings} onSettingsChange={saveSettings} showToast={showToast} />
+              <Settings 
+                settings={settings} 
+                onSettingsChange={saveSettings} 
+                showToast={showToast} 
+                appVersion={appVersion}
+                updateInfo={updateInfo}
+                updateError={updateError}
+                onOpenUrl={handleOpenUrl}
+                onCheckUpdates={checkForUpdates}
+              />
             )}
 
             {dbError && (
@@ -1870,223 +1972,257 @@ export default function App() {
             )}
           </div>
 
-      {/* Confirmation Modal */}
-      {(logToDelete !== null || beltLogToDelete !== null) && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141414] border border-[#f0b419]/50 rounded-lg p-5 w-full max-w-[300px] shadow-2xl">
-            <h3 className="text-[#f0b419] font-bold text-lg mb-2">Delete Log?</h3>
-            <p className="text-gray-400 text-sm mb-6">
-              Are you sure you want to delete this entry? This action cannot be undone.
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setLogToDelete(null);
-                  setBeltLogToDelete(null);
-                }}
-                className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="px-4 py-2 text-sm bg-red-900/50 text-red-200 border border-red-500/50 rounded hover:bg-red-900 hover:text-white transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[328px] text-center whitespace-nowrap bg-[#141414] border border-[#f0b419]/50 text-[#f0b419] px-4 py-2 rounded shadow-[0_0_10px_rgba(240,180,25,0.2)] text-sm z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          {toastMessage}
-        </div>
-      )}
-
-      {/* Tracked Sites Modal */}
-      {isTrackedSitesModalOpen && (
-        <div className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col z-40">
-          <div className="p-4 border-b border-[#f0b419]/30 flex justify-between items-center bg-[#0a0a0a]">
-            <div className="flex items-baseline space-x-3">
-              <h2 className="text-lg font-bold text-[#f0b419] uppercase tracking-wider">
-                Tracked Sites
-              </h2>
-              <span className="text-xs font-mono text-gray-500 uppercase tracking-widest">
-                | Filter: {statsFilter}
-              </span>
-            </div>
-            <button
-              onClick={() => setIsTrackedSitesModalOpen(false)}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div 
-            className="flex-1 overflow-y-auto p-4 space-y-2"
-            onScroll={(e) => {
-              const target = e.currentTarget;
-              if (target.scrollHeight - target.scrollTop <= target.clientHeight + 100) {
-                fetchTrackedSites();
-              }
-            }}
-          >
-            {trackedSites.length === 0 && !isLoadingTrackedSites ? (
-              <p className="text-sm text-gray-500 italic text-center py-8">
-                No sites tracked yet.
-              </p>
-            ) : (
-              <>
-                {trackedSites.map((log) => {
-                  const dateObj = new Date(log.timestamp + 'Z');
-                  const timeStr = isNaN(dateObj.getTime())
-                    ? log.timestamp
-                    : format(dateObj, 'MMM dd HH:mm:ss');
-                  
-                  const icons = getActiveIcons(log);
-
-                  return (
-                    <div
-                      key={log.id}
-                      className="flex items-center justify-between bg-[#141414] border border-gray-800 p-2 rounded text-xs group"
-                    >
-                      <div className="flex-1 truncate pr-2">
-                        <span className="text-gray-500 mr-2">[{timeStr}]</span>
-                        <span className="text-gray-200 font-medium">
-                          {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
-                        </span>
-                        {icons.length > 0 && (
-                          <span className="ml-2">
-                            <span className="text-gray-500 mr-1">-</span>
-                            {icons.map((icon, idx) => (
-                              <span key={idx}>
-                                <span className={`text-[10px] tracking-wider ${icon.color === 'gold' ? 'text-[#f0b419]' : icon.color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]'}`}>
-                                  {icon.label}
-                                </span>
-                                {idx < icons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => requestDelete(log.id)}
-                        className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
-                        title="Delete log"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-                {isLoadingTrackedSites && (
-                  <div className="text-center py-4">
-                    <div className="inline-block w-4 h-4 border-2 border-[#f0b419] border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Auto-Backup Notification Modal */}
-      {isAutoBackupModalOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300 backdrop-blur-sm">
-          <div className="bg-[#141414] border border-[#f0b419] rounded-lg p-6 w-full max-w-[320px] shadow-[0_0_30px_rgba(240,180,25,0.2)] flex flex-col items-center text-center">
-            <div className="w-16 h-16 bg-[#f0b419]/10 rounded-full flex items-center justify-center mb-4 border border-[#f0b419]/30">
-              <HardDrive size={32} className="text-[#f0b419]" />
-            </div>
-            <h3 className="text-[#f0b419] font-black text-xl mb-1 uppercase tracking-tighter">Auto-Backup</h3>
-            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Successful</div>
-            <p className="text-gray-400 text-xs mb-6 leading-relaxed">
-              A daily backup of your database and settings has been created in your destination folder.
-            </p>
-            <button
-              onClick={() => setIsAutoBackupModalOpen(false)}
-              className="w-full py-2 bg-[#f0b419] text-[#0a0a0a] font-bold text-xs uppercase tracking-widest rounded hover:bg-white transition-colors duration-200"
-            >
-              Acknowledged
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* History Modal (Last 12h) */}
-      {isHistoryModalOpen && (
-        <div className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col z-40">
-          <div className="p-4 border-b border-[#f0b419]/30 flex justify-between items-center bg-[#0a0a0a]">
-            <div className="flex items-baseline space-x-3">
-              <h2 className="text-lg font-bold text-[#f0b419] uppercase tracking-wider">
-                Recent History
-              </h2>
-              <span className="text-xs font-mono text-gray-500 uppercase tracking-widest">
-                | Last 12 Hours
-              </span>
-            </div>
-            <button
-              onClick={() => setIsHistoryModalOpen(false)}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {fullHistory.length === 0 ? (
-              <p className="text-sm text-gray-500 italic text-center py-8">
-                No sites logged in the last 12 hours.
-              </p>
-            ) : (
-              fullHistory.map((log) => {
-                const dateObj = new Date(log.timestamp + 'Z');
-                const timeStr = isNaN(dateObj.getTime())
-                  ? log.timestamp
-                  : format(dateObj, 'HH:mm:ss');
-                
-                const icons = getActiveIcons(log);
-
-                return (
-                  <div
-                    key={log.id}
-                    className="flex items-center justify-between bg-[#141414] border border-gray-800 p-2 rounded text-xs group"
+          {/* Confirmation Modal */}
+          {(logToDelete !== null || beltLogToDelete !== null) && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+              <div className="bg-[#141414] border border-[#f0b419]/50 rounded-lg p-5 w-full max-w-[300px] shadow-2xl">
+                <h3 className="text-[#f0b419] font-bold text-lg mb-2">Delete Log?</h3>
+                <p className="text-gray-400 text-sm mb-6">
+                  Are you sure you want to delete this entry? This action cannot be undone.
+                </p>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => {
+                      setLogToDelete(null);
+                      setBeltLogToDelete(null);
+                    }}
+                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
                   >
-                    <div className="flex-1 truncate pr-2">
-                      <span className="text-gray-500 mr-2">[{timeStr}]</span>
-                      <span className="text-gray-200 font-medium">
-                        {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
-                      </span>
-                      {icons.length > 0 && (
-                        <span className="ml-2">
-                          <span className="text-gray-500 mr-1">-</span>
-                          {icons.map((icon, idx) => (
-                            <span key={idx}>
-                              <span className={`text-[10px] tracking-wider ${icon.color === 'gold' ? 'text-[#f0b419]' : icon.color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]'}`}>
-                                {icon.label}
-                              </span>
-                              {idx < icons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="px-4 py-2 text-sm bg-red-900/50 text-red-200 border border-red-500/50 rounded hover:bg-red-900 hover:text-white transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Update Available Modal (Full Screen) */}
+          {updateInfo && !isUpdateDismissed && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300 backdrop-blur-sm">
+              <div className="bg-[#141414] border border-[#f0b419] rounded-lg p-6 w-full max-w-[320px] shadow-[0_0_30px_rgba(240,180,25,0.3)] flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-[#f0b419]/10 rounded-full flex items-center justify-center mb-4 border border-[#f0b419]/30">
+                  <Activity size={32} className="text-[#f0b419]" />
+                </div>
+                <h3 className="text-[#f0b419] font-black text-xl mb-1 uppercase tracking-tighter">Update Available</h3>
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Version {updateInfo.latest}</div>
+                
+                <p className="text-gray-400 text-xs mb-6 leading-relaxed">
+                  A new version of EVE AnomTracker is available on GitHub. 
+                  (Current version: {updateInfo.current})
+                </p>
+
+                <div className="space-y-3 w-full">
+                  <button
+                    onClick={() => handleOpenUrl('https://github.com/CBY-Software/eve-anom-tracker/releases/latest')}
+                    className="w-full py-2 bg-[#f0b419] text-[#0a0a0a] font-bold text-xs uppercase tracking-widest rounded hover:bg-white transition-colors duration-200 flex items-center justify-center space-x-2"
+                  >
+                    <ExternalLink size={14} />
+                    <span>Download Now</span>
+                  </button>
+                  <button
+                    onClick={() => setIsUpdateDismissed(true)}
+                    className="w-full py-2 bg-[#141414] border border-gray-700 text-gray-500 font-bold text-xs uppercase tracking-widest rounded hover:border-gray-500 hover:text-gray-300 transition-colors duration-200"
+                  >
+                    Remind Me Later
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Toast Notification */}
+          {toastMessage && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[328px] text-center whitespace-nowrap bg-[#141414] border border-[#f0b419]/50 text-[#f0b419] px-4 py-2 rounded shadow-[0_0_10px_rgba(240,180,25,0.2)] text-sm z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              {toastMessage}
+            </div>
+          )}
+
+          {/* Tracked Sites Modal */}
+          {isTrackedSitesModalOpen && (
+            <div className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col z-40">
+              <div className="p-4 border-b border-[#f0b419]/30 flex justify-between items-center bg-[#0a0a0a]">
+                <div className="flex items-baseline space-x-3">
+                  <h2 className="text-lg font-bold text-[#f0b419] uppercase tracking-wider">
+                    Tracked Sites
+                  </h2>
+                  <span className="text-xs font-mono text-gray-500 uppercase tracking-widest">
+                    | Filter: {statsFilter}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsTrackedSitesModalOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors p-1"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div
+                className="flex-1 overflow-y-auto p-4 space-y-2"
+                onScroll={(e) => {
+                  const target = e.currentTarget;
+                  if (target.scrollHeight - target.scrollTop <= target.clientHeight + 100) {
+                    fetchTrackedSites();
+                  }
+                }}
+              >
+                {trackedSites.length === 0 && !isLoadingTrackedSites ? (
+                  <p className="text-sm text-gray-500 italic text-center py-8">
+                    No sites tracked yet.
+                  </p>
+                ) : (
+                  <>
+                    {trackedSites.map((log) => {
+                      const dateObj = new Date(log.timestamp + 'Z');
+                      const timeStr = isNaN(dateObj.getTime())
+                        ? log.timestamp
+                        : format(dateObj, 'MMM dd HH:mm:ss');
+
+                      const icons = getActiveIcons(log);
+
+                      return (
+                        <div
+                          key={log.id}
+                          className="flex items-center justify-between bg-[#141414] border border-gray-800 p-2 rounded text-xs group"
+                        >
+                          <div className="flex-1 truncate pr-2">
+                            <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                            <span className="text-gray-200 font-medium">
+                              {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
                             </span>
-                          ))}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => requestDelete(log.id)}
-                      className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
-                      title="Delete log"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-      </>
+                            {icons.length > 0 && (
+                              <span className="ml-2">
+                                <span className="text-gray-500 mr-1">-</span>
+                                {icons.map((icon, idx) => (
+                                  <span key={idx}>
+                                    <span className={`text-[10px] tracking-wider ${icon.color === 'gold' ? 'text-[#f0b419]' : icon.color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]'}`}>
+                                      {icon.label}
+                                    </span>
+                                    {idx < icons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => requestDelete(log.id)}
+                            className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                            title="Delete log"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {isLoadingTrackedSites && (
+                      <div className="text-center py-4">
+                        <div className="inline-block w-4 h-4 border-2 border-[#f0b419] border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Auto-Backup Notification Modal */}
+          {isAutoBackupModalOpen && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300 backdrop-blur-sm">
+              <div className="bg-[#141414] border border-[#f0b419] rounded-lg p-6 w-full max-w-[320px] shadow-[0_0_30px_rgba(240,180,25,0.2)] flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-[#f0b419]/10 rounded-full flex items-center justify-center mb-4 border border-[#f0b419]/30">
+                  <HardDrive size={32} className="text-[#f0b419]" />
+                </div>
+                <h3 className="text-[#f0b419] font-black text-xl mb-1 uppercase tracking-tighter">Auto-Backup</h3>
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Successful</div>
+                <p className="text-gray-400 text-xs mb-6 leading-relaxed">
+                  A daily backup of your database and settings has been created in your destination folder.
+                </p>
+                <button
+                  onClick={() => setIsAutoBackupModalOpen(false)}
+                  className="w-full py-2 bg-[#f0b419] text-[#0a0a0a] font-bold text-xs uppercase tracking-widest rounded hover:bg-white transition-colors duration-200"
+                >
+                  Acknowledged
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* History Modal (Last 12h) */}
+          {isHistoryModalOpen && (
+            <div className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col z-40">
+              <div className="p-4 border-b border-[#f0b419]/30 flex justify-between items-center bg-[#0a0a0a]">
+                <div className="flex items-baseline space-x-3">
+                  <h2 className="text-lg font-bold text-[#f0b419] uppercase tracking-wider">
+                    Recent History
+                  </h2>
+                  <span className="text-xs font-mono text-gray-500 uppercase tracking-widest">
+                    | Last 12 Hours
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsHistoryModalOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors p-1"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {fullHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic text-center py-8">
+                    No sites logged in the last 12 hours.
+                  </p>
+                ) : (
+                  fullHistory.map((log) => {
+                    const dateObj = new Date(log.timestamp + 'Z');
+                    const timeStr = isNaN(dateObj.getTime())
+                      ? log.timestamp
+                      : format(dateObj, 'HH:mm:ss');
+
+                    const icons = getActiveIcons(log);
+
+                    return (
+                      <div
+                        key={log.id}
+                        className="flex items-center justify-between bg-[#141414] border border-gray-800 p-2 rounded text-xs group"
+                      >
+                        <div className="flex-1 truncate pr-2">
+                          <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                          <span className="text-gray-200 font-medium">
+                            {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
+                          </span>
+                          {icons.length > 0 && (
+                            <span className="ml-2">
+                              <span className="text-gray-500 mr-1">-</span>
+                              {icons.map((icon, idx) => (
+                                <span key={idx}>
+                                  <span className={`text-[10px] tracking-wider ${icon.color === 'gold' ? 'text-[#f0b419]' : icon.color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]'}`}>
+                                    {icon.label}
+                                  </span>
+                                  {idx < icons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => requestDelete(log.id)}
+                          className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                          title="Delete log"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <Splash />
       )}
@@ -2107,31 +2243,31 @@ function ToggleButton({
 }) {
   const baseClasses =
     'w-full py-2 px-1 text-xs font-semibold uppercase tracking-wider rounded border transition-all duration-200 text-center cursor-pointer';
-  
+
   const colorClasses =
     color === 'gold'
       ? active
         ? 'bg-[#f0b419]/20 border-[#f0b419] text-[#f0b419] shadow-[0_0_10px_rgba(240,180,25,0.4)]'
         : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#f0b419]/50 hover:text-gray-300'
       : color === 'green'
-      ? active
-        ? 'bg-[#00ff7f]/20 border-[#00ff7f] text-[#00ff7f] shadow-[0_0_10px_rgba(0,255,127,0.4)]'
-        : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00ff7f]/50 hover:text-gray-300'
-      : color === 'emerald'
-      ? active
-        ? 'bg-[#50c878]/20 border-[#50c878] text-[#50c878] shadow-[0_0_10px_rgba(80,200,120,0.4)]'
-        : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#50c878]/50 hover:text-gray-300'
-      : color === 'cyan'
-      ? active
-        ? 'bg-[#00ffff]/20 border-[#00ffff] text-[#00ffff] shadow-[0_0_10px_rgba(0,255,255,0.4)]'
-        : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00ffff]/50 hover:text-gray-300'
-      : color === 'purple'
-      ? active
-        ? 'bg-[#bf94ff]/20 border-[#bf94ff] text-[#bf94ff] shadow-[0_0_10px_rgba(191,148,255,0.4)]'
-        : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#bf94ff]/50 hover:text-gray-300'
-      : active
-      ? 'bg-[#00e5ff]/20 border-[#00e5ff] text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.4)]'
-      : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00e5ff]/50 hover:text-gray-300';
+        ? active
+          ? 'bg-[#00ff7f]/20 border-[#00ff7f] text-[#00ff7f] shadow-[0_0_10px_rgba(0,255,127,0.4)]'
+          : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00ff7f]/50 hover:text-gray-300'
+        : color === 'emerald'
+          ? active
+            ? 'bg-[#50c878]/20 border-[#50c878] text-[#50c878] shadow-[0_0_10px_rgba(80,200,120,0.4)]'
+            : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#50c878]/50 hover:text-gray-300'
+          : color === 'cyan'
+            ? active
+              ? 'bg-[#00ffff]/20 border-[#00ffff] text-[#00ffff] shadow-[0_0_10px_rgba(0,255,255,0.4)]'
+              : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00ffff]/50 hover:text-gray-300'
+            : color === 'purple'
+              ? active
+                ? 'bg-[#bf94ff]/20 border-[#bf94ff] text-[#bf94ff] shadow-[0_0_10px_rgba(191,148,255,0.4)]'
+                : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#bf94ff]/50 hover:text-gray-300'
+              : active
+                ? 'bg-[#00e5ff]/20 border-[#00e5ff] text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.4)]'
+                : 'bg-[#141414] border-gray-800 text-gray-500 hover:border-[#00e5ff]/50 hover:text-gray-300';
 
   return (
     <div className={`${baseClasses} ${colorClasses}`} onClick={onClick}>

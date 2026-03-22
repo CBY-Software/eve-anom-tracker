@@ -29,11 +29,16 @@ interface SettingsProps {
   settings: AppSettings;
   onSettingsChange: (newSettings: AppSettings) => void;
   showToast: (message: string) => void;
+  appVersion: string;
+  updateInfo: { latest: string, current: string } | null;
+  updateError?: string | null;
+  onOpenUrl: (url: string) => void;
+  onCheckUpdates: () => void;
 }
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_IPC__' in window);
 
-export default function Settings({ settings, onSettingsChange, showToast }: SettingsProps) {
+export default function Settings({ settings, onSettingsChange, showToast, appVersion, updateInfo, updateError, onOpenUrl, onCheckUpdates }: SettingsProps) {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredSystems, setFilteredSystems] = useState<SolarSystem[]>([]);
@@ -125,6 +130,56 @@ export default function Settings({ settings, onSettingsChange, showToast }: Sett
 
   return (
     <div className="flex-1 overflow-y-auto pr-2 pb-8 space-y-6">
+      <h2 className="text-sm font-semibold text-[#f0b419] uppercase tracking-wider mb-4 border-b border-[#f0b419]/30 pb-2">
+        Application Information
+      </h2>
+      <div className="bg-[#141414] border border-[#f0b419]/20 rounded-lg p-4 mb-6 space-y-3">
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-gray-500 uppercase tracking-widest font-medium">Current Version</span>
+          <span className="text-white font-mono">{appVersion}</span>
+        </div>
+        <div className="flex justify-between items-center text-xs">
+          <div className="flex items-center space-x-2">
+            <span className="text-gray-500 uppercase tracking-widest font-medium">Update Status</span>
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                onCheckUpdates();
+              }}
+              className="text-gray-600 hover:text-[#f0b419] transition-colors p-1"
+              title="Check for updates"
+            >
+              <Activity size={10} className="animate-pulse" />
+            </button>
+          </div>
+          {updateInfo ? (
+            <span className="text-[#00ff7f] font-bold animate-pulse flex items-center">
+              <Activity size={12} className="mr-1" />
+              New Update {updateInfo.latest}
+            </span>
+          ) : updateError ? (
+            <span className="text-red-400 font-medium flex items-center">
+              <X size={12} className="mr-1" />
+              Check Failed ({updateError})
+            </span>
+          ) : (
+            <span className="text-[#00e5ff] font-medium flex items-center">
+              <Activity size={12} className="mr-1 invisible" />
+              Up to date
+            </span>
+          )}
+        </div>
+        {updateInfo && (
+          <button 
+            onClick={() => onOpenUrl('https://github.com/CBY-Software/eve-anom-tracker/releases/latest')}
+            className="w-full mt-2 py-2 bg-[#f0b419]/10 border border-[#f0b419] text-[#f0b419] font-bold text-[10px] uppercase tracking-[0.2em] rounded hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all text-center flex items-center justify-center space-x-2"
+          >
+            <ExternalLink size={12} />
+            <span>Open Releases on GitHub</span>
+          </button>
+        )}
+      </div>
+
       <h2 className="text-sm font-semibold text-[#f0b419] uppercase tracking-wider mb-4 border-b border-[#f0b419]/30 pb-2">
         Window Controls
       </h2>
