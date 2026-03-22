@@ -450,8 +450,7 @@ export default function App() {
       const v = await getVersion();
       setAppVersion(v);
 
-      // Temporarily hardcode for testing
-      const currentVersion = '0.1.0';
+      const currentVersion = v;
 
       const response = await fetch('https://api.github.com/repos/CBY-Software/eve-anom-tracker/releases/latest');
       
