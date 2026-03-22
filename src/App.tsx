@@ -1993,6 +1993,28 @@ export default function App() {
         </div>
       )}
 
+      {/* Auto-Backup Notification Modal */}
+      {isAutoBackupModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300 backdrop-blur-sm">
+          <div className="bg-[#141414] border border-[#f0b419] rounded-lg p-6 w-full max-w-[320px] shadow-[0_0_30px_rgba(240,180,25,0.2)] flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-[#f0b419]/10 rounded-full flex items-center justify-center mb-4 border border-[#f0b419]/30">
+              <HardDrive size={32} className="text-[#f0b419]" />
+            </div>
+            <h3 className="text-[#f0b419] font-black text-xl mb-1 uppercase tracking-tighter">Auto-Backup</h3>
+            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Successful</div>
+            <p className="text-gray-400 text-xs mb-6 leading-relaxed">
+              A daily backup of your database and settings has been created in your destination folder.
+            </p>
+            <button
+              onClick={() => setIsAutoBackupModalOpen(false)}
+              className="w-full py-2 bg-[#f0b419] text-[#0a0a0a] font-bold text-xs uppercase tracking-widest rounded hover:bg-white transition-colors duration-200"
+            >
+              Acknowledged
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* History Modal (Last 12h) */}
       {isHistoryModalOpen && (
         <div className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col z-40">
