@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 use zip::write::SimpleFileOptions;
-use zip::ZipWriter;
+use zip::{ZipArchive, ZipWriter};
 
 fn get_migrations() -> Vec<Migration> {
     vec![
@@ -247,6 +247,58 @@ fn create_backup_zip(src_files: Vec<String>, dest_zip: String) -> Result<(), Str
     Ok(())
 }
 
+#[tauri::command]
+fn restore_backup_zip(zip_path: String) -> Result<(), String> {
+    let path = std::path::Path::new(&zip_path);
+    if !path.exists() {
+        return Err("Zip file does not exist".to_string());
+    }
+
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|e| e.to_string())?;
+    
+    let data_dir = get_data_dir();
+    let data_dir_path = std::path::Path::new(&data_dir);
+    
+    if !data_dir_path.exists() {
+        fs::create_dir_all(data_dir_path).map_err(|e| e.to_string())?;
+    }
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        
+        // We only care about files, not directories, since our backup only contains files
+        if file.is_dir() {
+            continue;
+        }
+
+        let enclosed_name = file.enclosed_name()
+            .ok_or_else(|| "Invalid file name in archive".to_string())?;
+        
+        let outpath = data_dir_path.join(enclosed_name);
+
+        if let Some(p) = outpath.parent() {
+            if !p.exists() {
+                fs::create_dir_all(p).map_err(|e| e.to_string())?;
+            }
+        }
+        
+        // Try to create the file. If it fails (e.g. locked), return error.
+        let mut outfile = fs::File::create(&outpath).map_err(|e| {
+            format!("Failed to create file {:?}: {}. The application might be using this file.", outpath, e)
+        })?;
+        
+        std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn restart_app(app_handle: tauri::AppHandle) {
+    app_handle.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let db_url = format!("sqlite:{}", get_db_file_path().to_string_lossy());
@@ -298,6 +350,8 @@ pub fn run() {
             get_data_dir,
             join_paths,
             create_backup_zip,
+            restore_backup_zip,
+            restart_app,
             open_folder,
             apply_window_settings, 
             load_settings, 

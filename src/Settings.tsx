@@ -1,6 +1,6 @@
 import { ChangeEvent, useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Folder, Save, Loader2, ExternalLink, Search, X, Plus, Activity } from 'lucide-react';
+import { Folder, Save, Loader2, ExternalLink, Search, X, Plus, Activity, RefreshCw } from 'lucide-react';
 import systemsData from './data/solar_systems.json';
 
 interface SolarSystem {
@@ -40,6 +40,7 @@ const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in windo
 
 export default function Settings({ settings, onSettingsChange, showToast, appVersion, updateInfo, updateError, onOpenUrl, onCheckUpdates }: SettingsProps) {
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredSystems, setFilteredSystems] = useState<SolarSystem[]>([]);
 
@@ -125,6 +126,47 @@ export default function Settings({ settings, onSettingsChange, showToast, appVer
       showToast(`Backup Error: ${error}`);
     } finally {
       setIsBackingUp(false);
+    }
+  };
+  
+  const handleRestore = async () => {
+    if (!isTauri) {
+      showToast('Restore is only available in the desktop application');
+      return;
+    }
+
+    try {
+      const { open, message, confirm } = await import('@tauri-apps/plugin-dialog');
+      
+      const confirmed = await confirm(
+        'This will overwrite your current settings and database with the backup content. The application will restart to apply changes. Continue?',
+        { title: 'Restore Backup', kind: 'warning' }
+      );
+
+      if (!confirmed) return;
+
+      const selected = await open({
+        multiple: false,
+        title: 'Select Backup File',
+        filters: [{ name: 'Backup Archive', extensions: ['zip'] }]
+      });
+      
+      if (selected && typeof selected === 'string') {
+        setIsRestoring(true);
+        try {
+          await invoke('restore_backup_zip', { zipPath: selected });
+          await message('Restore successful! The application will now restart.', { title: 'Success', kind: 'info' });
+          await invoke('restart_app');
+        } catch (error) {
+          console.error('Restore failed:', error);
+          showToast(`Restore Error: ${error}`);
+        } finally {
+          setIsRestoring(false);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open file dialog:', error);
+      showToast('Failed to select file');
     }
   };
 
@@ -487,6 +529,24 @@ export default function Settings({ settings, onSettingsChange, showToast, appVer
             <>
               <Save size={16} />
               <span>Backup Data Now</span>
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={handleRestore}
+          disabled={isRestoring}
+          className="w-full py-3 bg-emerald-500/10 border border-emerald-500/50 text-emerald-500 font-bold text-xs uppercase tracking-[0.2em] rounded hover:bg-emerald-500 hover:text-[#0a0a0a] transition-all duration-200 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+        >
+          {isRestoring ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              <span>Restoring...</span>
+            </>
+          ) : (
+            <>
+              <RefreshCw size={16} />
+              <span>Restore Data from ZIP</span>
             </>
           )}
         </button>
