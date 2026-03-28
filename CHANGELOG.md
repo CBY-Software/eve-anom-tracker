@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3] - 2026-03-28
+### Added
+- Added a restore backup function to settings and database.
+
 ## [0.4.2-beta] - 2026-03-22
 ### Added
 - Added GitHub-based update notification system.
