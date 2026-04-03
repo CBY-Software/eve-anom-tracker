@@ -539,6 +539,7 @@ export default function Settings({ settings, onSettingsChange, showToast, appVer
           onClick={handleRestore}
           disabled={isRestoring}
           className="w-full py-3 bg-emerald-500/10 border border-emerald-500/50 text-emerald-500 font-bold text-xs uppercase tracking-[0.2em] rounded hover:bg-emerald-500 hover:text-[#0a0a0a] transition-all duration-200 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+
         >
           {isRestoring ? (
             <>

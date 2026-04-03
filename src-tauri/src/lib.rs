@@ -267,6 +267,7 @@ fn restore_backup_zip(zip_path: String) -> Result<(), String> {
         // if the new database file is from a different session.
         let _ = fs::remove_file(data_dir_path.join("anomtracker.db-wal"));
         let _ = fs::remove_file(data_dir_path.join("anomtracker.db-shm"));
+
     }
 
     for i in 0..archive.len() {
