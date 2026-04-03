@@ -24,6 +24,7 @@ interface AnomLog {
   location_region?: string;
   location_system?: string;
   location_security?: string;
+  prev_timestamp?: string;
 }
 
 interface BeltLog {
@@ -306,6 +307,28 @@ export default function App() {
     was_faction_capital_spawn: false,
     was_titan_spawn: false,
   });
+
+  const getSiteDuration = (current: string, previous?: string) => {
+    if (!previous) return null;
+    try {
+      const start = new Date(previous.replace(' ', 'T') + 'Z');
+      const end = new Date(current.replace(' ', 'T') + 'Z');
+      const diffMs = end.getTime() - start.getTime();
+      
+      if (diffMs <= 0) return null;
+      
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      if (minutes > 0) return `${minutes}m ${seconds}s`;
+      return `${seconds}s`;
+    } catch {
+      return null;
+    }
+  };
 
   const [beltToggles, setBeltToggles] = useState({
     was_faction_spawn: false,
@@ -662,6 +685,7 @@ export default function App() {
   };
 
   const checkAutoBackup = async (currentSettings: AppSettings) => {
+    if (import.meta.env.DEV) return;
     if (currentSettings.autoBackupFrequency === 'off' || !currentSettings.backupPath) return;
 
     const now = new Date();
@@ -689,10 +713,12 @@ export default function App() {
         const backupDest = await invoke<string>('join_paths', { base: currentSettings.backupPath, sub: zipName });
 
         const dbFile = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db' });
+        const dbWal = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db-wal' });
+        const dbShm = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db-shm' });
         const settingsFile = await invoke<string>('join_paths', { base: dataDir, sub: 'settings.json' });
 
         await invoke('create_backup_zip', {
-          srcFiles: [dbFile, settingsFile],
+          srcFiles: [dbFile, dbWal, dbShm, settingsFile],
           destZip: backupDest
         });
 
@@ -899,7 +925,7 @@ export default function App() {
   const fetchHistory = async (database: any) => {
     try {
       const result = await database.select(
-        "SELECT * FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC LIMIT 3"
+        "SELECT *, (SELECT timestamp FROM anom_logs a2 WHERE a2.id < anom_logs.id ORDER BY a2.id DESC LIMIT 1) as prev_timestamp FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC LIMIT 3"
       );
       setHistory(result as AnomLog[]);
 
@@ -909,7 +935,7 @@ export default function App() {
       setRecentCount((countResult as any[])[0]?.count || 0);
 
       const fullResult = await database.select(
-        "SELECT * FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
+        "SELECT *, (SELECT timestamp FROM anom_logs a2 WHERE a2.id < anom_logs.id ORDER BY a2.id DESC LIMIT 1) as prev_timestamp FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
       );
       setFullHistory(fullResult as AnomLog[]);
 
@@ -1026,7 +1052,7 @@ export default function App() {
     const offset = page * limit;
 
     try {
-      let query = "SELECT * FROM anom_logs";
+      let query = "SELECT *, (SELECT timestamp FROM anom_logs a2 WHERE a2.id < anom_logs.id ORDER BY a2.id DESC LIMIT 1) as prev_timestamp FROM anom_logs";
       const params: any[] = [];
       const conditions: string[] = [];
 
@@ -2080,6 +2106,8 @@ export default function App() {
                       const timeStr = isNaN(dateObj.getTime())
                         ? log.timestamp
                         : format(dateObj, 'MMM dd HH:mm:ss');
+                      
+                      const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
 
                       const icons = getActiveIcons(log);
 
@@ -2090,6 +2118,9 @@ export default function App() {
                         >
                           <div className="flex-1 truncate pr-2">
                             <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                            {duration && (
+                              <span className="text-[#00ff7f]/70 font-mono text-[10px] mr-2">({duration})</span>
+                            )}
                             <span className="text-gray-200 font-medium">
                               {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
                             </span>
@@ -2181,6 +2212,8 @@ export default function App() {
                       ? log.timestamp
                       : format(dateObj, 'HH:mm:ss');
 
+                    const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
+
                     const icons = getActiveIcons(log);
 
                     return (
@@ -2190,6 +2223,9 @@ export default function App() {
                       >
                         <div className="flex-1 truncate pr-2">
                           <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                          {duration && (
+                            <span className="text-[#00ff7f]/70 font-mono text-[10px] mr-2">({duration})</span>
+                          )}
                           <span className="text-gray-200 font-medium">
                             {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
                           </span>

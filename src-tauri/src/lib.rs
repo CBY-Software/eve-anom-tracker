@@ -262,6 +262,11 @@ fn restore_backup_zip(zip_path: String) -> Result<(), String> {
     
     if !data_dir_path.exists() {
         fs::create_dir_all(data_dir_path).map_err(|e| e.to_string())?;
+    } else {
+        // Before unzipping, delete any existing WAL/SHM files to prevent SQLite corruption
+        // if the new database file is from a different session.
+        let _ = fs::remove_file(data_dir_path.join("anomtracker.db-wal"));
+        let _ = fs::remove_file(data_dir_path.join("anomtracker.db-shm"));
     }
 
     for i in 0..archive.len() {

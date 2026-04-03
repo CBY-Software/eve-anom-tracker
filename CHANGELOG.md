@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4] - 2026-04-03
+### Added
+- Implemented site duration tracking to show time spent in anomalies.
+
+### Fixed
+- Fixed database corruption on restore by cleaning up existing WAL and SHM files.
+
+### Improved
+- Manual and automatic backups now include SQLite WAL and SHM files for better data consistency.
+- Automatic backups are now disabled in development sessions.
+
 ## [0.4.3] - 2026-03-28
 ### Added
 - Added a restore backup function to settings and database.

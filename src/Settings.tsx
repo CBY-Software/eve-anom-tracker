@@ -113,10 +113,12 @@ export default function Settings({ settings, onSettingsChange, showToast, appVer
       const backupDest = await invoke<string>('join_paths', { base: settings.backupPath, sub: zipName });
 
       const dbFile = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db' });
+      const dbWal = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db-wal' });
+      const dbShm = await invoke<string>('join_paths', { base: dataDir, sub: 'anomtracker.db-shm' });
       const settingsFile = await invoke<string>('join_paths', { base: dataDir, sub: 'settings.json' });
       
       await invoke('create_backup_zip', { 
-        srcFiles: [dbFile, settingsFile], 
+        srcFiles: [dbFile, dbWal, dbShm, settingsFile], 
         destZip: backupDest 
       });
 

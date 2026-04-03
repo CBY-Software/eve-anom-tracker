@@ -1,6 +1,6 @@
 {
   "productName": "EVE AnomTracker",
-  "version": "0.4.2",
+  "version": "0.4.4",
   "identifier": "com.anomtracker.app",
   "build": {
     "beforeDevCommand": "npm run dev",
