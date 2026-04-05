@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5] - 2026-04-05
+### Improved
+- Added a "Close Application" button to update notifications to help users exit the app before running a new installer.
+- Redesigned the update check UI in Settings with a more visible button and status text.
+- Added an "Exit App to Update" button to the Settings page for easier installation of downloaded releases.
+
 ## [0.4.4] - 2026-04-03
 ### Added
 - Implemented site duration tracking to show time spent in anomalies.

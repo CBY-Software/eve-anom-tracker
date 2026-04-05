@@ -501,7 +501,7 @@ export default function App() {
       }
 
       const latestVersion = data.tag_name.replace(/^v/, '');
-      console.log(`Update Check: Latest=${latestVersion}, Local(Test)=${currentVersion}`);
+      console.log(`Update Check Success: Latest=${latestVersion}, Local=${currentVersion}`);
 
       if (latestVersion !== currentVersion && compareVersions(latestVersion, currentVersion) > 0) {
         console.log('Update Check: NEW VERSION DETECTED');
@@ -510,10 +510,12 @@ export default function App() {
       } else {
         console.log('Update Check: App is up to date');
         setUpdateInfo(null);
+        showToast('Application is up to date', 3000);
       }
     } catch (error) {
-      console.error('Update Check: Error', error);
+      console.error('Update Check Error:', error);
       setUpdateError(error instanceof Error ? error.message : 'Connection Error');
+      showToast(`Update Check Failed: ${error}`, 4000);
     }
   };
 
@@ -2054,6 +2056,12 @@ export default function App() {
                     className="w-full py-2 bg-[#141414] border border-gray-700 text-gray-500 font-bold text-xs uppercase tracking-widest rounded hover:border-gray-500 hover:text-gray-300 transition-colors duration-200"
                   >
                     Remind Me Later
+                  </button>
+                  <button
+                    onClick={() => isTauri && getCurrentWindow().close()}
+                    className="w-full py-2 bg-red-900/20 border border-red-500/50 text-red-500 font-bold text-xs uppercase tracking-widest rounded hover:bg-red-900/40 hover:text-white transition-colors duration-200"
+                  >
+                    Close Application
                   </button>
                 </div>
               </div>
