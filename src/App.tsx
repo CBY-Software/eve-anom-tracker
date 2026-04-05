@@ -64,6 +64,20 @@ interface StatsData {
   };
 }
 
+interface HourlyStat {
+  hour: number;
+  total: number;
+  special: number;
+}
+
+interface WeeklyStat {
+  day: number; // 0=Monday, 6=Sunday
+  total: number;
+  special: number;
+}
+
+
+
 const StatCard = ({ label, count, total, color, highlighted = false, className = "" }: { label: string, count: number, total: number, color: 'green' | 'blue', highlighted?: boolean, className?: string }) => {
   const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
   const colorClass = color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]';
@@ -256,6 +270,10 @@ export default function App() {
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [systemDateFormat, setSystemDateFormat] = useState<string>('yyyy-MM-dd');
 
+  const [hourlyStats, setHourlyStats] = useState<HourlyStat[]>([]);
+  const [weeklyStats, setWeeklyStats] = useState<WeeklyStat[]>([]);
+  const [statsSubView, setStatsSubView] = useState<'general' | 'advanced'>('general');
+
   const showToast = (message: string, duration = 3000) => {
     setToastMessage(message);
     if (toastTimeoutRef.current) {
@@ -314,9 +332,9 @@ export default function App() {
       const start = new Date(previous.replace(' ', 'T') + 'Z');
       const end = new Date(current.replace(' ', 'T') + 'Z');
       const diffMs = end.getTime() - start.getTime();
-      
+
       if (diffMs <= 0) return null;
-      
+
       const totalSeconds = Math.floor(diffMs / 1000);
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -401,7 +419,7 @@ export default function App() {
         if (isTauri) {
           await loadSettings();
           setIsSettingsLoaded(true);
-          
+
           const { getVersion } = await import('@tauri-apps/api/app');
           const v = await getVersion();
           setAppVersion(v);
@@ -476,7 +494,7 @@ export default function App() {
       const currentVersion = v;
 
       const response = await fetch('https://api.github.com/repos/CBY-Software/eve-anom-tracker/releases/latest');
-      
+
       if (!response.ok) {
         const status = response.status;
         console.error(`Update Check: Fetch failed with status ${status}`);
@@ -1039,6 +1057,36 @@ export default function App() {
           titan: row.titan || 0,
         }
       });
+
+      // Also fetch Advanced Stats behavior using the shared filters
+      const whereClause = conditions.length > 0 ? " WHERE " + conditions.join(" AND ") : "";
+
+      // Hourly stats query
+      const hourlyQuery = `
+        SELECT 
+          CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) as hour,
+          COUNT(*) as total,
+          SUM(CASE WHEN was_ded_escalation=1 OR was_occ_mine_escalation=1 OR was_cap_stag_escalation=1 OR was_shld_starb_escalation=1 OR was_attack_site_escalation=1 OR was_faction_npc_spawn=1 OR was_capital_spawn=1 OR was_faction_capital_spawn=1 OR was_titan_spawn=1 THEN 1 ELSE 0 END) as special
+        FROM anom_logs${whereClause}
+        GROUP BY hour
+        ORDER BY hour ASC
+      `;
+      const hourlyResult = await database.select(hourlyQuery, [...params]);
+      setHourlyStats(hourlyResult as HourlyStat[]);
+
+      // Weekly stats query
+      const weeklyQuery = `
+        SELECT 
+          CAST(strftime('%w', timestamp, 'localtime') AS INTEGER) as day,
+          COUNT(*) as total,
+          SUM(CASE WHEN was_ded_escalation=1 OR was_occ_mine_escalation=1 OR was_cap_stag_escalation=1 OR was_shld_starb_escalation=1 OR was_attack_site_escalation=1 OR was_faction_npc_spawn=1 OR was_capital_spawn=1 OR was_faction_capital_spawn=1 OR was_titan_spawn=1 THEN 1 ELSE 0 END) as special
+        FROM anom_logs${whereClause}
+        GROUP BY day
+        ORDER BY day ASC
+      `;
+      const weeklyResult = await database.select(weeklyQuery, [...params]);
+      setWeeklyStats(weeklyResult as WeeklyStat[]);
+
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
@@ -1261,8 +1309,9 @@ export default function App() {
   const isLandscape = settings.orientation === 'landscape';
   const isStatistics = currentView === 'statistics';
   const isSettings = currentView === 'settings';
-  const appWidth = (isStatistics || isSettings) ? 800 : (isLandscape ? 700 : 360);
-  const appHeight = isCollapsed ? 28 : ((isStatistics || isSettings) ? 825 : (isLandscape ? 450 : 725));
+  const isExpandedView = isStatistics || isSettings;
+  const appWidth = isExpandedView ? 800 : (isLandscape ? 700 : 360);
+  const appHeight = isCollapsed ? 28 : (isExpandedView ? 825 : (isLandscape ? 450 : 725));
 
   return (
     <div
@@ -1270,8 +1319,8 @@ export default function App() {
       style={{
         width: `${appWidth}px`,
         height: `${appHeight}px`,
-        transform: `scale(${(isStatistics || isSettings) ? 1 : settings.globalScale})`,
-        opacity: (isStatistics || isSettings) ? 1.0 : settings.windowOpacity,
+        transform: `scale(${isExpandedView ? 1 : settings.globalScale})`,
+        opacity: isExpandedView ? 1.0 : settings.windowOpacity,
         border: '1px solid #0a0a0a',
         boxSizing: 'border-box',
         boxShadow: 'none'
@@ -1758,70 +1807,95 @@ export default function App() {
             )}
             {currentView === 'statistics' && stats && (
               <div className="flex-1 overflow-y-auto pt-[5px] px-6 pb-2 space-y-6 animate-in fade-in duration-500">
-                {/* Filter Header */}
-                <div className="flex items-center justify-end mb-2 space-x-6">
-                  <div className="flex items-center space-x-3">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Site:</span>
-                    <select
-                      value={statsFilter}
-                      onChange={(e) => setStatsFilter(e.target.value)}
-                      className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-xs p-2 rounded focus:outline-none focus:border-[#f0b419] min-w-[150px]"
+                {/* Header Row: Sub-view Toggle & Filters */}
+                <div className="flex items-center justify-between mb-4 mt-1">
+                  <div className="flex items-center bg-[#141414]/50 border border-[#f0b419]/10 p-0.5 rounded-lg shadow-lg h-[28px]">
+                    <button
+                      onClick={() => setStatsSubView('general')}
+                      className={`h-full px-3 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${statsSubView === 'general'
+                        ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
+                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
+                        }`}
                     >
-                      <option value="All">All Sites</option>
-                      {siteTypes.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
+                      <BarChart2 size={9} className={statsSubView === 'general' ? 'opacity-100' : 'opacity-40'} />
+                      <span>General</span>
+                    </button>
+                    <button
+                      onClick={() => setStatsSubView('advanced')}
+                      className={`h-full px-3 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${statsSubView === 'advanced'
+                        ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
+                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
+                        }`}
+                    >
+                      <Activity size={9} className={statsSubView === 'advanced' ? 'opacity-100' : 'opacity-40'} />
+                      <span>Advanced</span>
+                    </button>
                   </div>
 
                   <div className="flex items-center space-x-3">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Date:</span>
-                    <select
-                      value={dateRangeType}
-                      onChange={(e) => setDateRangeType(e.target.value as any)}
-                      className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-xs p-2 rounded focus:outline-none focus:border-[#f0b419] min-w-[120px]"
-                    >
-                      <option value="All">All Time</option>
-                      <option value="Today">Today</option>
-                      <option value="Yesterday">Yesterday</option>
-                      <option value="Week">Last Week</option>
-                      <option value="Month">Last Month</option>
-                      <option value="Custom">Custom Range</option>
-                    </select>
-                  </div>
-
-                  {dateRangeType === 'Custom' && (
-                    <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-right-2 duration-300">
-                      <div className="relative group">
-                        <input
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
-                          className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                        />
-                        <div className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-[10px] p-1.5 rounded w-[89px] flex justify-between items-center group-hover:border-[#f0b419] transition-colors">
-                          <span>{customStartDate ? formatLocalDate(customStartDate) : 'From...'}</span>
-                          <Calendar size={10} className="opacity-50" />
-                        </div>
-                      </div>
-                      <span className="text-gray-500 text-[10px]">to</span>
-                      <div className="relative group">
-                        <input
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
-                          className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                        />
-                        <div className="bg-[#141414] border border-[#f0b419]/30 text-[#f0b419] text-[10px] p-1.5 rounded w-[89px] flex justify-between items-center group-hover:border-[#f0b419] transition-colors">
-                          <span>{customEndDate ? formatLocalDate(customEndDate) : 'To...'}</span>
-                          <Calendar size={10} className="opacity-50" />
-                        </div>
-                      </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Site:</span>
+                      <select
+                        value={statsFilter}
+                        onChange={(e) => setStatsFilter(e.target.value)}
+                        className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[125px] font-bold py-0"
+                      >
+                        <option value="All">All Sites</option>
+                        {siteTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
                     </div>
-                  )}
+
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Date:</span>
+                      <select
+                        value={dateRangeType}
+                        onChange={(e) => setDateRangeType(e.target.value as any)}
+                        className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[105px] font-bold py-0"
+                      >
+                        <option value="All">All Time</option>
+                        <option value="Today">Today</option>
+                        <option value="Yesterday">Yesterday</option>
+                        <option value="Week">Last Week</option>
+                        <option value="Month">Last Month</option>
+                        <option value="Custom">Custom Range</option>
+                      </select>
+                    </div>
+
+                    {dateRangeType === 'Custom' && (
+                      <div className="flex items-center space-x-1 animate-in fade-in slide-in-from-right-1 duration-300">
+                        <div className="relative group">
+                          <input
+                            type="date"
+                            value={customStartDate}
+                            onChange={(e) => setCustomStartDate(e.target.value)}
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                          />
+                          <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                            <span className="truncate">{customStartDate ? formatLocalDate(customStartDate) : 'From...'}</span>
+                            <Calendar size={9} className="opacity-40" />
+                          </div>
+                        </div>
+                        <span className="text-gray-600 text-[8px] font-bold uppercase">to</span>
+                        <div className="relative group">
+                          <input
+                            type="date"
+                            value={customEndDate}
+                            onChange={(e) => setCustomEndDate(e.target.value)}
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                          />
+                          <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                            <span className="truncate">{customEndDate ? formatLocalDate(customEndDate) : 'To...'}</span>
+                            <Calendar size={9} className="opacity-40" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Header Stats */}
+                {/* Header Stats - Always Visible */}
                 <div className="grid grid-cols-2 gap-6">
                   <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group flex flex-col justify-between min-h-[135px]">
                     <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -1857,58 +1931,346 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Escalations Section */}
-                <section>
-                  {(() => {
-                    const totalEsc = stats.escalations.ded + stats.escalations.occupiedMine + stats.escalations.capitalStaging + stats.escalations.shieldedStarbase + stats.escalations.attackSite;
-                    const escPerc = stats.totalSites > 0 ? ((totalEsc / stats.totalSites) * 100).toFixed(1) : '0.0';
-                    return (
-                      <div className="flex items-center space-x-4 mb-4">
-                        <div className="flex items-baseline space-x-2">
-                          <h3 className="text-sm font-bold text-[#00ff7f] uppercase tracking-[0.3em]">Escalations</h3>
-                          <span className="text-[10px] font-mono text-[#00ff7f]/60 uppercase tracking-widest">
-                            | {totalEsc} Total ({escPerc}%)
-                          </span>
-                        </div>
-                        <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00ff7f]/30 to-transparent"></div>
+                {/* Sub-view Content */}
+                {statsSubView === 'general' ? (
+                  <>
+                    {/* Escalations Section */}
+                    <section>
+                      {(() => {
+                        const totalEsc = stats.escalations.ded + stats.escalations.occupiedMine + stats.escalations.capitalStaging + stats.escalations.shieldedStarbase + stats.escalations.attackSite;
+                        const escPerc = stats.totalSites > 0 ? ((totalEsc / stats.totalSites) * 100).toFixed(1) : '0.0';
+                        return (
+                          <div className="flex items-center space-x-4 mb-4">
+                            <div className="flex items-baseline space-x-2">
+                              <h3 className="text-sm font-bold text-[#00ff7f] uppercase tracking-[0.3em]">Escalations</h3>
+                              <span className="text-[10px] font-mono text-[#00ff7f]/60 uppercase tracking-widest">
+                                | {totalEsc} Total ({escPerc}%)
+                              </span>
+                            </div>
+                            <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00ff7f]/30 to-transparent"></div>
+                          </div>
+                        );
+                      })()}
+                      <div className="grid grid-cols-3 gap-4">
+                        <StatCard label="DED Site" count={stats.escalations.ded} total={stats.totalSites} color="green" />
+                        <StatCard label="Occupied Mine" count={stats.escalations.occupiedMine} total={stats.totalSites} color="green" />
+                        <StatCard label="Attack Site" count={stats.escalations.attackSite} total={stats.totalSites} color="green" highlighted={true} className="row-span-2" />
+                        <StatCard label="Capital Staging" count={stats.escalations.capitalStaging} total={stats.totalSites} color="green" />
+                        <StatCard label="Shielded Starbase" count={stats.escalations.shieldedStarbase} total={stats.totalSites} color="green" />
                       </div>
-                    );
-                  })()}
-                  <div className="grid grid-cols-3 gap-4">
-                    <StatCard label="DED Site" count={stats.escalations.ded} total={stats.totalSites} color="green" />
-                    <StatCard label="Occupied Mine" count={stats.escalations.occupiedMine} total={stats.totalSites} color="green" />
-                    <StatCard label="Attack Site" count={stats.escalations.attackSite} total={stats.totalSites} color="green" highlighted={true} className="row-span-2" />
-                    <StatCard label="Capital Staging" count={stats.escalations.capitalStaging} total={stats.totalSites} color="green" />
-                    <StatCard label="Shielded Starbase" count={stats.escalations.shieldedStarbase} total={stats.totalSites} color="green" />
-                  </div>
-                </section>
+                    </section>
 
-                {/* Special Spawns Section */}
-                <section>
-                  {(() => {
-                    const totalSpawns = stats.specialSpawns.factionSubcap + stats.specialSpawns.capital + stats.specialSpawns.factionCapital + stats.specialSpawns.titan;
-                    const spawnPerc = stats.totalSites > 0 ? ((totalSpawns / stats.totalSites) * 100).toFixed(1) : '0.0';
-                    return (
-                      <div className="flex items-center space-x-4 mb-4">
-                        <div className="flex items-baseline space-x-2">
-                          <h3 className="text-sm font-bold text-[#00e5ff] uppercase tracking-[0.3em]">Special Spawns</h3>
-                          <span className="text-[10px] font-mono text-[#00e5ff]/60 uppercase tracking-widest">
-                            | {totalSpawns} Total ({spawnPerc}%)
-                          </span>
-                        </div>
-                        <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/30 to-transparent"></div>
+                    {/* Special Spawns Section */}
+                    <section>
+                      {(() => {
+                        const totalSpawns = stats.specialSpawns.factionSubcap + stats.specialSpawns.capital + stats.specialSpawns.factionCapital + stats.specialSpawns.titan;
+                        const spawnPerc = stats.totalSites > 0 ? ((totalSpawns / stats.totalSites) * 100).toFixed(1) : '0.0';
+                        return (
+                          <div className="flex items-center space-x-4 mb-4">
+                            <div className="flex items-baseline space-x-2">
+                              <h3 className="text-sm font-bold text-[#00e5ff] uppercase tracking-[0.3em]">Special Spawns</h3>
+                              <span className="text-[10px] font-mono text-[#00e5ff]/60 uppercase tracking-widest">
+                                | {totalSpawns} Total ({spawnPerc}%)
+                              </span>
+                            </div>
+                            <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/30 to-transparent"></div>
+                          </div>
+                        );
+                      })()}
+                      <div className="grid grid-cols-4 gap-4">
+                        <StatCard label="Faction Subcapital" count={stats.specialSpawns.factionSubcap} total={stats.totalSites} color="blue" />
+                        <StatCard label="Capital" count={stats.specialSpawns.capital} total={stats.totalSites} color="blue" />
+                        <StatCard label="Faction Capital" count={stats.specialSpawns.factionCapital} total={stats.totalSites} color="blue" />
+                        <StatCard label="Titan" count={stats.specialSpawns.titan} total={stats.totalSites} color="blue" />
                       </div>
-                    );
-                  })()}
-                  <div className="grid grid-cols-4 gap-4">
-                    <StatCard label="Faction Subcapital" count={stats.specialSpawns.factionSubcap} total={stats.totalSites} color="blue" />
-                    <StatCard label="Capital" count={stats.specialSpawns.capital} total={stats.totalSites} color="blue" />
-                    <StatCard label="Faction Capital" count={stats.specialSpawns.factionCapital} total={stats.totalSites} color="blue" />
-                    <StatCard label="Titan" count={stats.specialSpawns.titan} total={stats.totalSites} color="blue" />
-                  </div>
-                </section>
+                    </section>
+                  </>
+                ) : (
+                  <>
+                    {/* Advanced View: Hourly Analysis */}
+                    <section>
+                      <div className="flex items-center w-full mb-3">
+                        <h3 className="text-[9px] font-bold text-[#00e5ff] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Hourly Activity & Rate</h3>
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/50 to-transparent"></div>
+                      </div>
+                      <div className="bg-[#141414] border border-gray-800/50 rounded-lg pt-4 px-4 pb-[5px]">
+                        <div className="h-[123px] relative">
+                          {(() => {
+                            const hours = Array.from({ length: 24 }, (_, i) => i);
+                            const statsByHour = hours.map(hour => {
+                              const stat = hourlyStats.find(s => s.hour === hour);
+                              const total = stat?.total || 0;
+                              const special = stat?.special || 0;
+                              const percentage = total > 0 ? (special / total) * 100 : 0;
+                              return { hour, total, special, percentage };
+                            });
 
-                {/* 30 Day Activity Chart */}
+                            const maxCount = Math.max(...statsByHour.map(s => s.total), 1);
+                            const maxPerc = Math.max(...statsByHour.map(s => s.percentage), 1);
+                            
+                            const lineD = statsByHour.every(s => s.total === 0)
+                              ? ""
+                              : statsByHour.reduce((acc, s, i) => {
+                                const x = (i + 0.5) * (700 / 24);
+                                // Absolute top edge mapping with more variation
+                                const y = 15 + (1 - (s.percentage / Math.max(maxPerc, 1))) * 30;
+                                return acc + (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+                              }, "");
+
+                            return (
+                              <>
+                                {/* Bars Layer (Site Count) */}
+                                <div className="absolute inset-0 flex items-end space-x-[2px] z-20 px-1 pb-[5px]">
+                                  {statsByHour.map((s, index) => {
+                                    const heightPerc = (s.total / maxCount) * 60;
+                                    const isLeftEdge = index <= 1;
+                                    const isRightEdge = index >= 22;
+
+                                    return (
+                                      <div
+                                        key={index}
+                                        className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-default"
+                                      >
+                                        <div className={`absolute -top-[49px] ${isLeftEdge ? 'left-0' : isRightEdge ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#00e5ff]/50 text-[#00e5ff] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col items-center min-w-[100px]`}>
+                                          <span className="font-bold border-b border-[#00e5ff]/30 pb-1 mb-1 w-full text-center">{String(s.hour).padStart(2, '0')}:00 - {String(s.hour).padStart(2, '0')}:59</span>
+                                          <div className="flex flex-col w-full space-y-0.5">
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Sites Run:</span>
+                                              <span className="font-bold">{s.total}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Special:</span>
+                                              <span className="font-bold">{s.special}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4 text-[#00ff7f]">
+                                              <span className="opacity-70 text-[9px]">Success Rate:</span>
+                                              <span className="font-bold">{s.percentage.toFixed(1)}%</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div
+                                          className={`w-full transition-all duration-300 rounded-t-[1px] relative ${s.total > 0 ? 'bg-[#00e5ff]/10 border border-[#00e5ff]/20 group-hover:bg-[#00e5ff]/25' : 'bg-[#00e5ff]/5'}`}
+                                          style={{ height: s.total > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
+                                        >
+                                          {s.total > 0 && (
+                                            <div className="absolute top-1 left-0 right-0 text-[7px] font-bold text-[#00e5ff]/60 text-center pointer-events-none">
+                                              {s.total}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-gray-600 mt-1 font-mono group-hover:text-gray-400 transition-colors">{String(s.hour).padStart(2, '0')}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Line Layer (Success Rate) */}
+                                <svg
+                                  className="absolute inset-0 w-full h-full pointer-events-none z-10 px-1 overflow-visible"
+                                  viewBox="0 0 700 123"
+                                  preserveAspectRatio="none"
+                                >
+                                  {lineD && (
+                                    <g>
+                                      <path
+                                        d={lineD}
+                                        fill="none"
+                                        stroke="#00ff7f"
+                                        strokeWidth="1.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="drop-shadow-[0_0_4px_rgba(0,255,127,0.2)]"
+                                      />
+                                      {statsByHour.map((s, i) => {
+                                        if (s.total === 0) return null;
+                                        const x = (i + 0.5) * (700 / 24);
+                                        // Scale trend to max variation for clarity
+                                        const y = 15 + (1 - (s.percentage / Math.max(maxPerc, 1))) * 30;
+                                        return (
+                                          <g key={i}>
+                                            <circle
+                                              cx={x}
+                                              cy={y}
+                                              r="1.5"
+                                              fill="#141414"
+                                              stroke="#00ff7f"
+                                              strokeWidth="0.8"
+                                            />
+                                            {s.total > 0 && (
+                                              <text
+                                                x={x}
+                                                y={y - 8}
+                                                textAnchor="middle"
+                                                fill="#00ff7f"
+                                                className="text-[10px] font-black font-mono drop-shadow-[0_0_2px_rgba(0,0,0,1)]"
+                                                style={{ fontSize: '11px' }}
+                                              >
+                                                {s.percentage.toFixed(0)}%
+                                              </text>
+                                            )}
+                                          </g>
+                                        );
+                                      })}
+                                    </g>
+                                  )}
+                                </svg>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Advanced View: Daily Analysis */}
+                    <section>
+                      <div className="flex items-center w-full mb-3">
+                        <h3 className="text-[9px] font-bold text-[#00e5ff] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Daily Activity & Rate</h3>
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/50 to-transparent"></div>
+                      </div>
+                      <div className="bg-[#141414] border border-gray-800/50 rounded-lg pt-4 px-4 pb-[5px]">
+                        <div className="h-[123px] relative">
+                          {(() => {
+                            const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                            const sqlDayMap = [1, 2, 3, 4, 5, 6, 0];
+                            const statsByDay = sqlDayMap.map(sqlDay => {
+                              const stat = weeklyStats.find(s => s.day === sqlDay);
+                              const total = stat?.total || 0;
+                              const special = stat?.special || 0;
+                              const percentage = total > 0 ? (special / total) * 100 : 0;
+                              return { total, special, percentage };
+                            });
+
+                            const maxCount = Math.max(...statsByDay.map(s => s.total), 1);
+                            const maxPerc = Math.max(...statsByDay.map(s => s.percentage), 1);
+
+                            // Calculate points for the SVG line
+                            // We use -20px top offset for the percentage labels if needed, or just keep it in the chart area.
+                            // The chart height is 112. Let's use 80% for the max line height to leave room for labels.
+                            const linePoints = statsByDay.map((s, i) => {
+                              const xPerc = (i + 0.5) * (100 / 7);
+                              const yPerc = 100 - (s.total > 0 ? (s.percentage / Math.max(maxPerc, 1)) * 70 : 0) - 15; // 15% bottom padding
+                              return `${xPerc}% ${yPerc}%`;
+                            });
+
+                            const lineD = statsByDay.every(s => s.total === 0)
+                              ? ""
+                              : statsByDay.reduce((acc, s, i) => {
+                                const x = (i + 0.5) * 100;
+                                // Absolute top edge mapping with more variation
+                                const y = 15 + (1 - (s.percentage / Math.max(maxPerc, 1))) * 30;
+                                return acc + (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+                              }, "");
+
+                            return (
+                              <>
+                                {/* Bars Layer (Site Count) - Raised to z-20 so tooltips are in front */}
+                                <div className="absolute inset-0 flex items-end space-x-3 z-20 px-1 pb-[5px]">
+                                  {statsByDay.map((s, index) => {
+                                    // Scale bars to 60% max height
+                                    const heightPerc = (s.total / maxCount) * 60;
+                                    return (
+                                      <div
+                                        key={index}
+                                        className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-default"
+                                      >
+                                        <div className="absolute -top-[49px] left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-[#00e5ff]/50 text-[#00e5ff] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col items-center min-w-[100px]">
+                                          {(() => {
+                                            const fullDayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                                            return <span className="font-bold border-b border-[#00e5ff]/30 pb-1 mb-1 w-full text-center">{fullDayNames[index]}</span>;
+                                          })()}
+                                          <div className="flex flex-col w-full space-y-0.5">
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Sites Run:</span>
+                                              <span className="font-bold">{s.total}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Special:</span>
+                                              <span className="font-bold">{s.special}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4 text-[#00ff7f]">
+                                              <span className="opacity-70 text-[9px]">Success Rate:</span>
+                                              <span className="font-bold">{s.percentage.toFixed(1)}%</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div
+                                          className={`w-full transition-all duration-300 rounded-t-[3px] relative ${s.total > 0 ? 'bg-[#00e5ff]/10 border border-[#00e5ff]/20 group-hover:bg-[#00e5ff]/25 shadow-[0_4px_12px_rgba(0,229,255,0.05)]' : 'bg-[#00e5ff]/5'}`}
+                                          style={{ height: s.total > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
+                                        >
+                                          {s.total > 0 && (
+                                            <div className="absolute top-1 left-0 right-0 text-[8.5px] font-bold text-[#00e5ff]/60 text-center pointer-events-none">
+                                              {s.total}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-gray-600 mt-1 font-bold uppercase tracking-wider group-hover:text-gray-300 transition-colors">{dayNames[index]}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Line Layer (Success Rate) */}
+                                <svg
+                                  className="absolute inset-0 w-full h-full pointer-events-none z-10 px-1 overflow-visible"
+                                  viewBox="0 0 700 123"
+                                  preserveAspectRatio="none"
+                                >
+                                  {lineD && (
+                                    <>
+                                      <path
+                                        d={lineD}
+                                        fill="none"
+                                        stroke="#00ff7f"
+                                        strokeWidth="1.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="drop-shadow-[0_0_4px_rgba(0,255,127,0.2)]"
+                                      />
+                                      {statsByDay.map((s, i) => {
+                                        if (s.total === 0) return null;
+                                        const x = (i + 0.5) * 100;
+                                        // Absolute top mapping with more variation
+                                        const y = 15 + (1 - (s.percentage / Math.max(maxPerc, 1))) * 30;
+                                        return (
+                                          <g key={i}>
+                                            <circle
+                                              cx={x}
+                                              cy={y}
+                                              r="1.8"
+                                              fill="#141414"
+                                              stroke="#00ff7f"
+                                              strokeWidth="1"
+                                            />
+                                            {s.total > 0 && (
+                                              <text
+                                                x={x}
+                                                y={y - 8}
+                                                textAnchor="middle"
+                                                fill="#00ff7f"
+                                                className="text-[14px] font-black font-mono drop-shadow-[0_0_2px_rgba(0,0,0,1)]"
+                                                style={{ fontSize: '15px' }}
+                                              >
+                                                {s.percentage.toFixed(0)}%
+                                              </text>
+                                            )}
+                                          </g>
+                                        );
+                                      })}
+                                    </>
+                                  )}
+                                </svg>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </section>
+                  </>
+                )}
+
+                {/* 30 Day Activity Chart - Always Visible */}
                 <section>
                   <div className="flex items-center w-full mb-3">
                     <h3 className="text-[9px] font-bold text-[#f0b419] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Last 30 Days Activity</h3>
@@ -1922,12 +2284,11 @@ export default function App() {
                           d.setDate(d.getDate() - (29 - i));
                           return format(d, 'yyyy-MM-dd');
                         });
-                        const maxCount = Math.max(...dailyStats.map(d => d.count), 1);
+                        const maxCountVal = Math.max(...dailyStats.map(d => d.count), 1);
 
                         return days.map((dayStr, index) => {
                           const stat = dailyStats.find(s => s.date === dayStr);
                           const count = stat ? stat.count : 0;
-                          const maxCountVal = Math.max(...dailyStats.map(d => d.count), 1);
                           const heightPerc = (count / maxCountVal) * 100;
 
                           const isLeftEdge = index === 0;
@@ -1979,11 +2340,13 @@ export default function App() {
               </div>
             )}
 
+
+
             {currentView === 'settings' && (
-              <Settings 
-                settings={settings} 
-                onSettingsChange={saveSettings} 
-                showToast={showToast} 
+              <Settings
+                settings={settings}
+                onSettingsChange={saveSettings}
+                showToast={showToast}
                 appVersion={appVersion}
                 updateInfo={updateInfo}
                 updateError={updateError}
@@ -2037,9 +2400,9 @@ export default function App() {
                 </div>
                 <h3 className="text-[#f0b419] font-black text-xl mb-1 uppercase tracking-tighter">Update Available</h3>
                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Version {updateInfo.latest}</div>
-                
+
                 <p className="text-gray-400 text-xs mb-6 leading-relaxed">
-                  A new version of EVE AnomTracker is available on GitHub. 
+                  A new version of EVE AnomTracker is available on GitHub.
                   (Current version: {updateInfo.current})
                 </p>
 
@@ -2114,7 +2477,7 @@ export default function App() {
                       const timeStr = isNaN(dateObj.getTime())
                         ? log.timestamp
                         : format(dateObj, 'MMM dd HH:mm:ss');
-                      
+
                       const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
 
                       const icons = getActiveIcons(log);
