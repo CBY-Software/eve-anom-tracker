@@ -37,6 +37,7 @@ interface BeltLog {
   location_region?: string;
   location_system?: string;
   location_security?: string;
+  prev_timestamp?: string;
 }
 
 interface DailyStat {
@@ -44,6 +45,14 @@ interface DailyStat {
   count: number;
   escalations: number;
   spawns: number;
+}
+
+interface BeltStatsData {
+  totalBelts: number;
+  specialCount: number;
+  factionCount: number;
+  haulerCount: number;
+  officerCount: number;
 }
 
 interface StatsData {
@@ -78,18 +87,18 @@ interface WeeklyStat {
 
 
 
-const StatCard = ({ label, count, total, color, highlighted = false, className = "" }: { label: string, count: number, total: number, color: 'green' | 'blue', highlighted?: boolean, className?: string }) => {
+const StatCard = ({ label, count, total, color, highlighted = false, className = "" }: { label: string, count: number, total: number, color: 'green' | 'blue' | 'purple', highlighted?: boolean, className?: string }) => {
   const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
-  const colorClass = color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]';
+  const colorClass = color === 'green' ? 'text-[#00ff7f]' : color === 'purple' ? 'text-[#bf94ff]' : 'text-[#00e5ff]';
   const borderColor = highlighted
-    ? (color === 'green' ? 'border-[#00ff7f]/60' : 'border-[#00e5ff]/60')
-    : (color === 'green' ? 'border-[#00ff7f]/20' : 'border-[#00e5ff]/20');
-  const bgHover = color === 'green' ? 'hover:bg-[#00ff7f]/5' : 'hover:bg-[#00e5ff]/5';
+    ? (color === 'green' ? 'border-[#00ff7f]/60' : color === 'purple' ? 'border-[#bf94ff]/60' : 'border-[#00e5ff]/60')
+    : (color === 'green' ? 'border-[#00ff7f]/20' : color === 'purple' ? 'border-[#bf94ff]/20' : 'border-[#00e5ff]/20');
+  const bgHover = color === 'green' ? 'hover:bg-[#00ff7f]/5' : color === 'purple' ? 'hover:bg-[#bf94ff]/5' : 'hover:bg-[#00e5ff]/5';
   const bgClass = highlighted
-    ? (color === 'green' ? 'bg-[#00ff7f]/5' : 'bg-[#00e5ff]/5')
+    ? (color === 'green' ? 'bg-[#00ff7f]/5' : color === 'purple' ? 'bg-[#bf94ff]/5' : 'bg-[#00e5ff]/5')
     : 'bg-[#141414]';
   const shadowClass = highlighted
-    ? (color === 'green' ? 'shadow-[0_0_15px_rgba(0,255,127,0.1)]' : 'shadow-[0_0_15px_rgba(0,229,255,0.1)]')
+    ? (color === 'green' ? 'shadow-[0_0_15px_rgba(0,255,127,0.1)]' : color === 'purple' ? 'shadow-[0_0_15px_rgba(191,148,255,0.1)]' : 'shadow-[0_0_15px_rgba(0,229,255,0.1)]')
     : '';
 
   return (
@@ -139,7 +148,7 @@ function getBootstrapSettings(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
-type ViewState = 'combat' | 'belt' | 'combatStats' | 'settings';
+type ViewState = 'combat' | 'belt' | 'combatStats' | 'beltStats' | 'settings';
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_IPC__' in window);
 
@@ -273,6 +282,15 @@ export default function App() {
   const [hourlyStats, setHourlyStats] = useState<HourlyStat[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStat[]>([]);
   const [statsSubView, setStatsSubView] = useState<'general' | 'advanced'>('general');
+  const [beltStats, setBeltStats] = useState<BeltStatsData | null>(null);
+  const [beltHourlyStats, setBeltHourlyStats] = useState<HourlyStat[]>([]);
+  const [beltWeeklyStats, setBeltWeeklyStats] = useState<WeeklyStat[]>([]);
+  const [beltDailyStats, setBeltDailyStats] = useState<DailyStat[]>([]);
+  const [isTrackedBeltsModalOpen, setIsTrackedBeltsModalOpen] = useState(false);
+  const [trackedBelts, setTrackedBelts] = useState<BeltLog[]>([]);
+  const [trackedBeltsPage, setTrackedBeltsPage] = useState(0);
+  const [hasMoreTrackedBelts, setHasMoreTrackedBelts] = useState(true);
+  const [isLoadingTrackedBelts, setIsLoadingTrackedBelts] = useState(false);
 
   const showToast = (message: string, duration = 3000) => {
     setToastMessage(message);
@@ -628,7 +646,7 @@ export default function App() {
         let width = s.orientation === 'portrait' ? 360 : 700;
         let height = s.orientation === 'portrait' ? 725 : 450;
 
-        if (currentView === 'combatStats' || currentView === 'settings') {
+        if (currentView === 'combatStats' || currentView === 'beltStats' || currentView === 'settings') {
           width = 800;
           height = 825;
         }
@@ -639,7 +657,7 @@ export default function App() {
 
         await invoke('apply_window_settings', {
           alwaysOnTop: s.alwaysOnTop,
-          scale: (currentView === 'combatStats' || currentView === 'settings') ? 1.0 : s.globalScale,
+          scale: (currentView === 'combatStats' || currentView === 'beltStats' || currentView === 'settings') ? 1.0 : s.globalScale,
           width,
           height
         });
@@ -653,6 +671,8 @@ export default function App() {
     applySettings(settings);
     if (db && currentView === 'combatStats') {
       fetchStats(db, statsFilter);
+    } else if (db && currentView === 'beltStats') {
+      fetchBeltStats(db);
     }
   }, [isCollapsed, currentView, statsFilter, dateRangeType, customStartDate, customEndDate]);
 
@@ -867,6 +887,28 @@ export default function App() {
             }
 
             if (query.includes('FROM belt_logs')) {
+              if (query.includes('SUM(CASE WHEN')) {
+                let logsToUse = [...this.beltLogs];
+                let currentParamIdx = 0;
+
+                if (query.includes("date(timestamp, 'localtime') >= ?")) {
+                  const startVal = bindValues![currentParamIdx++];
+                  logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) >= startVal);
+                }
+
+                if (query.includes("date(timestamp, 'localtime') <= ?")) {
+                  const endVal = bindValues![currentParamIdx++];
+                  logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) <= endVal);
+                }
+
+                return [{
+                  total: logsToUse.length,
+                  special: logsToUse.filter(l => l.was_faction_spawn === 1 || l.was_hauler_spawn === 1 || l.was_officer_spawn === 1).length,
+                  faction: logsToUse.filter(l => l.was_faction_spawn === 1).length,
+                  hauler: logsToUse.filter(l => l.was_hauler_spawn === 1).length,
+                  officer: logsToUse.filter(l => l.was_officer_spawn === 1).length
+                }] as unknown as T;
+              }
               if (query.includes('COUNT(*)')) {
                 return [{ count: filteredBelts.length }] as unknown as T;
               }
@@ -929,7 +971,7 @@ export default function App() {
   const fetchBeltHistory = async (database: any) => {
     try {
       const result = await database.select(
-        "SELECT * FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
+        "SELECT *, (SELECT timestamp FROM belt_logs b2 WHERE b2.id < belt_logs.id ORDER BY b2.id DESC LIMIT 1) as prev_timestamp FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
       );
       setBeltHistory(result as BeltLog[]);
 
@@ -937,8 +979,156 @@ export default function App() {
         "SELECT COUNT(*) as count FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours')"
       );
       setBeltRecentCount((countResult as any[])[0]?.count || 0);
+
+      if (currentView === 'beltStats') {
+        fetchBeltStats(database);
+      }
     } catch (error) {
       console.error('Failed to fetch belt history:', error);
+    }
+  };
+
+  const fetchBeltStats = async (database: any) => {
+    try {
+      // 1. Daily Stats (Last 30 Days) - for the activity chart at the bottom
+      const dailyQuery = `
+        SELECT 
+          date(timestamp, 'localtime') as date, 
+          COUNT(*) as count,
+          SUM(CASE WHEN was_faction_spawn=1 OR was_hauler_spawn=1 OR was_officer_spawn=1 THEN 1 ELSE 0 END) as escalations,
+          0 as spawns
+        FROM belt_logs 
+        WHERE timestamp >= date('now', 'localtime', '-30 days')
+        GROUP BY date(timestamp, 'localtime') ORDER BY date ASC
+      `;
+      const dailyResult = await database.select(dailyQuery);
+      setBeltDailyStats(dailyResult as DailyStat[]);
+
+      // 2. Filter conditions for the rest of the stats
+      const params: any[] = [];
+      const conditions: string[] = [];
+
+      const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
+      if (dateRange.start) {
+        conditions.push("date(timestamp, 'localtime') >= ?");
+        params.push(dateRange.start);
+      }
+      if (dateRange.end) {
+        conditions.push("date(timestamp, 'localtime') <= ?");
+        params.push(dateRange.end);
+      }
+
+      const whereClause = conditions.length > 0 ? " WHERE " + conditions.join(" AND ") : "";
+
+      // 3. Main Stats
+      let query = `
+        SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN was_faction_spawn=1 OR was_hauler_spawn=1 OR was_officer_spawn=1 THEN 1 ELSE 0 END) as special,
+          SUM(was_faction_spawn) as faction,
+          SUM(was_hauler_spawn) as hauler,
+          SUM(was_officer_spawn) as officer
+        FROM belt_logs${whereClause}
+      `;
+
+      const result = await database.select(query, params);
+      const row = (result as any[])[0];
+
+      if (row && row.total > 0) {
+        setBeltStats({
+          totalBelts: row.total,
+          specialCount: row.special || 0,
+          factionCount: row.faction || 0,
+          haulerCount: row.hauler || 0,
+          officerCount: row.officer || 0,
+        });
+      } else {
+        setBeltStats({
+          totalBelts: 0,
+          specialCount: 0,
+          factionCount: 0,
+          haulerCount: 0,
+          officerCount: 0,
+        });
+      }
+
+      // 4. Hourly Analysis
+      const hourlyQuery = `
+        SELECT 
+          CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) as hour,
+          COUNT(*) as total,
+          SUM(CASE WHEN was_faction_spawn=1 OR was_hauler_spawn=1 OR was_officer_spawn=1 THEN 1 ELSE 0 END) as special
+        FROM belt_logs${whereClause}
+        GROUP BY hour
+        ORDER BY hour ASC
+      `;
+      const hourlyResult = await database.select(hourlyQuery, params);
+      setBeltHourlyStats(hourlyResult as HourlyStat[]);
+
+      // 5. Weekly Analysis
+      const weeklyQuery = `
+        SELECT 
+          CAST(strftime('%w', timestamp, 'localtime') AS INTEGER) as day,
+          COUNT(*) as total,
+          SUM(CASE WHEN was_faction_spawn=1 OR was_hauler_spawn=1 OR was_officer_spawn=1 THEN 1 ELSE 0 END) as special
+        FROM belt_logs${whereClause}
+        GROUP BY day
+        ORDER BY day ASC
+      `;
+      const weeklyResult = await database.select(weeklyQuery, params);
+      setBeltWeeklyStats(weeklyResult as WeeklyStat[]);
+
+    } catch (error) {
+      console.error('Failed to fetch belt stats:', error);
+    }
+  };
+
+  const fetchTrackedBelts = async (reset: boolean = false) => {
+    if (!db || (isLoadingTrackedBelts && !reset) || (!hasMoreTrackedBelts && !reset)) return;
+
+    setIsLoadingTrackedBelts(true);
+    try {
+      const page = reset ? 0 : trackedBeltsPage;
+      const limit = 20;
+      const offset = page * limit;
+
+      let query = "SELECT *, (SELECT timestamp FROM belt_logs b2 WHERE b2.id < belt_logs.id ORDER BY b2.id DESC LIMIT 1) as prev_timestamp FROM belt_logs";
+      const params: any[] = [];
+      const conditions: string[] = [];
+
+      const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
+      if (dateRange.start) {
+        conditions.push("date(timestamp, 'localtime') >= ?");
+        params.push(dateRange.start);
+      }
+      if (dateRange.end) {
+        conditions.push("date(timestamp, 'localtime') <= ?");
+        params.push(dateRange.end);
+      }
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+
+      query += " ORDER BY id DESC LIMIT ? OFFSET ?";
+      params.push(limit, offset);
+
+      const result = await db.select(query, params);
+      const newLogs = result as BeltLog[];
+
+      if (reset) {
+        setTrackedBelts(newLogs);
+        setTrackedBeltsPage(1);
+      } else {
+        setTrackedBelts(prev => [...prev, ...newLogs]);
+        setTrackedBeltsPage(page + 1);
+      }
+
+      setHasMoreTrackedBelts(newLogs.length === limit);
+    } catch (error) {
+      console.error('Failed to fetch tracked belts:', error);
+    } finally {
+      setIsLoadingTrackedBelts(false);
     }
   };
 
@@ -961,6 +1151,8 @@ export default function App() {
 
       if (currentView === 'combatStats') {
         fetchStats(database, statsFilter);
+      } else if (currentView === 'beltStats') {
+        fetchBeltStats(database);
       }
     } catch (error) {
       console.error('Failed to fetch history:', error);
@@ -1308,8 +1500,9 @@ export default function App() {
 
   const isLandscape = settings.orientation === 'landscape';
   const isCombatStats = currentView === 'combatStats';
+  const isBeltStats = currentView === 'beltStats';
   const isSettings = currentView === 'settings';
-  const isExpandedView = isCombatStats || isSettings;
+  const isExpandedView = isCombatStats || isBeltStats || isSettings;
   const appWidth = isExpandedView ? 800 : (isLandscape ? 700 : 360);
   const appHeight = isCollapsed ? 28 : (isExpandedView ? 825 : (isLandscape ? 450 : 725));
 
@@ -1348,6 +1541,12 @@ export default function App() {
                 className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'belt' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Belt Log
+              </button>
+              <button
+                onClick={() => setCurrentView('beltStats')}
+                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'beltStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Belt Stats
               </button>
             </div>
             <button
@@ -1664,7 +1863,7 @@ export default function App() {
                   </div>
 
                   <div className="space-y-3 mb-4">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 border-b border-gray-800 pb-1">Special Spawns</div>
+                    <div className="text-[10px] font-bold text-[#f0b419] uppercase tracking-widest mb-1 border-b border-[#f0b419]/30 pb-1">Special Spawns</div>
                     <ToggleButton
                       label="Faction Subcapital"
                       active={beltToggles.was_faction_spawn}
@@ -1769,6 +1968,10 @@ export default function App() {
                           >
                             <div className="flex-1 truncate pr-2">
                               <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                              {(() => {
+                                const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
+                                return duration ? <span className="text-[#00ff7f]/70 font-mono text-[10px] mr-2">({duration})</span> : null;
+                              })()}
                               <span className="text-gray-200 font-medium">
                                 {log.location_system || 'Unknown System'}
                               </span>
@@ -1856,7 +2059,6 @@ export default function App() {
                       >
                         <option value="All">All Time</option>
                         <option value="Today">Today</option>
-                        <option value="Yesterday">Yesterday</option>
                         <option value="Week">Last Week</option>
                         <option value="Month">Last Month</option>
                         <option value="Custom">Custom Range</option>
@@ -2007,7 +2209,7 @@ export default function App() {
 
                             const maxCount = Math.max(...statsByHour.map(s => s.total), 1);
                             const maxPerc = Math.max(...statsByHour.map(s => s.percentage), 1);
-                            
+
                             const lineD = statsByHour.every(s => s.total === 0)
                               ? ""
                               : statsByHour.reduce((acc, s, i) => {
@@ -2340,6 +2542,457 @@ export default function App() {
               </div>
             )}
 
+            {currentView === 'beltStats' && beltStats && (
+              <div className="flex-1 overflow-y-auto pt-[5px] px-6 pb-2 space-y-6 animate-in fade-in duration-500">
+                {/* Header Row: Sub-view Toggle & Filter */}
+                <div className="flex items-center justify-between mb-4 mt-1">
+                  <div className="flex items-center bg-[#141414]/50 border border-[#f0b419]/10 p-0.5 rounded-lg shadow-lg h-[28px]">
+                    <button
+                      onClick={() => setStatsSubView('general')}
+                      className={`h-full px-3 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${statsSubView === 'general'
+                        ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
+                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
+                        }`}
+                    >
+                      <BarChart2 size={9} className={statsSubView === 'general' ? 'opacity-100' : 'opacity-40'} />
+                      <span>General</span>
+                    </button>
+                    <button
+                      onClick={() => setStatsSubView('advanced')}
+                      className={`h-full px-3 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${statsSubView === 'advanced'
+                        ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
+                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
+                        }`}
+                    >
+                      <Activity size={9} className={statsSubView === 'advanced' ? 'opacity-100' : 'opacity-40'} />
+                      <span>Advanced</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Date:</span>
+                      <select
+                        value={dateRangeType}
+                        onChange={(e) => setDateRangeType(e.target.value as any)}
+                        className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[105px] font-bold py-0"
+                      >
+                        <option value="All">All Time</option>
+                        <option value="Today">Today</option>
+                        <option value="Week">Last Week</option>
+                        <option value="Month">Last Month</option>
+                        <option value="Custom">Custom Range</option>
+                      </select>
+                    </div>
+
+                    {dateRangeType === 'Custom' && (
+                      <div className="flex items-center space-x-1 animate-in fade-in slide-in-from-right-1 duration-300">
+                        <div className="relative group">
+                          <input
+                            type="date"
+                            value={customStartDate}
+                            onChange={(e) => setCustomStartDate(e.target.value)}
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                          />
+                          <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                            <span className="truncate">{customStartDate ? formatLocalDate(customStartDate) : 'From...'}</span>
+                            <Calendar size={9} className="opacity-40" />
+                          </div>
+                        </div>
+                        <span className="text-gray-600 text-[8px] font-bold uppercase">to</span>
+                        <div className="relative group">
+                          <input
+                            type="date"
+                            value={customEndDate}
+                            onChange={(e) => setCustomEndDate(e.target.value)}
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                          />
+                          <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                            <span className="truncate">{customEndDate ? formatLocalDate(customEndDate) : 'To...'}</span>
+                            <Calendar size={9} className="opacity-40" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Header Stats - Always Visible */}
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group flex flex-col justify-between min-h-[135px]">
+                    <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <BarChart2 size={48} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Total Belts Tracked</div>
+                      <div className="text-5xl font-black text-white tracking-tighter">
+                        {beltStats.totalBelts}
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => {
+                          setIsTrackedBeltsModalOpen(true);
+                          fetchTrackedBelts(true);
+                        }}
+                        className="text-[10px] font-bold text-[#f0b419] hover:text-white transition-colors uppercase tracking-widest flex items-center space-x-1 p-2 -mr-2 -mb-2 cursor-pointer"
+                      >
+                        <span>View</span>
+                        <ExternalLink size={10} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <Activity size={48} />
+                    </div>
+                    <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Special Outcome %</div>
+                    <div className="text-5xl font-black text-white tracking-tighter">
+                      {beltStats.totalBelts > 0 ? ((beltStats.specialCount / beltStats.totalBelts) * 100).toFixed(1) : '0.0'}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-view Content */}
+                {statsSubView === 'general' ? (
+                  <section>
+                    {(() => {
+                      const outcomePerc = beltStats.totalBelts > 0 ? ((beltStats.specialCount / beltStats.totalBelts) * 100).toFixed(1) : '0.0';
+                      return (
+                        <div className="flex items-center space-x-4 mb-4">
+                          <div className="flex items-baseline space-x-2">
+                            <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.3em]">Belt Statistics</h3>
+                            <span className="text-[10px] font-mono text-[#f0b419]/60 uppercase tracking-widest">
+                              | {beltStats.specialCount} Total Special Outcomes ({outcomePerc}%)
+                            </span>
+                          </div>
+                          <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/30 to-transparent"></div>
+                        </div>
+                      );
+                    })()}
+                    <div className="grid grid-cols-3 gap-4">
+                      <StatCard label="Faction Subcapital" count={beltStats.factionCount} total={beltStats.totalBelts} color="green" className="min-h-[140px]" />
+                      <StatCard label="Hauler NPC" count={beltStats.haulerCount} total={beltStats.totalBelts} color="blue" className="min-h-[140px]" />
+                      <StatCard label="Officer Spawn" count={beltStats.officerCount} total={beltStats.totalBelts} color="purple" highlighted={true} className="min-h-[140px]" />
+                    </div>
+                  </section>
+                ) : (
+                  <>
+                    {/* Advanced View: Hourly Analysis */}
+                    <section>
+                      <div className="flex items-center w-full mb-3">
+                        <h3 className="text-[9px] font-bold text-[#00e5ff] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Hourly Activity & Rate</h3>
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/50 to-transparent"></div>
+                      </div>
+                      <div className="bg-[#141414] border border-gray-800/50 rounded-lg pt-4 px-4 pb-[5px]">
+                        <div className="h-[123px] relative">
+                          {(() => {
+                            const hours = Array.from({ length: 24 }, (_, i) => i);
+                            const maxCount = Math.max(...beltHourlyStats.map(s => s.total), 1);
+                            const maxPerc = Math.max(...beltHourlyStats.map(s => s.total > 0 ? (s.special / s.total) * 100 : 0), 1);
+
+                            const points = beltHourlyStats.map(s => {
+                              const x = (s.hour / 23) * 700;
+                              const perc = (s.special / s.total) * 100;
+                              const y = 15 + (1 - (perc / Math.max(maxPerc, 1))) * 30; // Scale to top area
+                              return `${x},${y}`;
+                            });
+                            const lineD = points.length > 1 ? `M ${points.join(' L ')}` : '';
+
+                            return (
+                              <>
+                                {/* Bar Layer (Total Count) */}
+                                <div className="absolute inset-0 flex items-end space-x-[2px] px-1 z-20">
+                                  {hours.map(hour => {
+                                    const s = beltHourlyStats.find(st => st.hour === hour) || { hour, total: 0, special: 0 };
+                                    const heightPerc = (s.total / maxCount) * 100;
+                                    const perc = s.total > 0 ? (s.special / s.total) * 100 : 0;
+
+                                    return (
+                                      <div
+                                        key={hour}
+                                        className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-default"
+                                      >
+                                        <div className="absolute -top-[49px] left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-[#00e5ff]/50 text-[#00e5ff] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col items-center min-w-[100px]">
+                                          <span className="font-bold border-b border-[#00e5ff]/30 pb-1 mb-1 w-full text-center">{hour.toString().padStart(2, '0')}:00</span>
+                                          <div className="flex flex-col w-full space-y-0.5">
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Belts Run:</span>
+                                              <span className="font-bold">{s.total}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Special:</span>
+                                              <span className="font-bold">{s.special}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4 text-[#00ff7f]">
+                                              <span className="opacity-70 text-[9px]">Success Rate:</span>
+                                              <span className="font-bold">{perc.toFixed(1)}%</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div
+                                          className={`w-full transition-all duration-300 rounded-t-[1.5px] relative ${s.total > 0 ? 'bg-[#00e5ff]/10 border border-[#00e5ff]/20 group-hover:bg-[#00e5ff]/25 shadow-[0_4px_12px_rgba(0,229,255,0.05)]' : 'bg-[#00e5ff]/5'}`}
+                                          style={{ height: s.total > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
+                                        >
+                                          {s.total > 0 && (
+                                            <div className="absolute top-1 left-0 right-0 text-[7px] font-bold text-[#00e5ff]/40 text-center pointer-events-none">
+                                              {s.total}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="text-[8px] text-gray-700 mt-1 font-bold group-hover:text-gray-400 transition-colors uppercase">{hour}h</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Line Layer (Success Rate) */}
+                                <svg
+                                  className="absolute inset-0 w-full h-full pointer-events-none z-10 px-1 overflow-visible"
+                                  viewBox="0 0 700 123"
+                                  preserveAspectRatio="none"
+                                >
+                                  {lineD && (
+                                    <>
+                                      <path
+                                        d={lineD}
+                                        fill="none"
+                                        stroke="#00ff7f"
+                                        strokeWidth="1.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="drop-shadow-[0_0_4px_rgba(0,255,127,0.2)]"
+                                      />
+                                      {beltHourlyStats.map((s, i) => {
+                                        if (s.total === 0) return null;
+                                        const x = (s.hour + 0.5) * (700 / 24);
+                                        const perc = (s.special / s.total) * 100;
+                                        const y = 15 + (1 - (perc / Math.max(maxPerc, 1))) * 30;
+                                        return (
+                                          <g key={i}>
+                                            <circle
+                                              cx={x}
+                                              cy={y}
+                                              r="1.8"
+                                              fill="#141414"
+                                              stroke="#00ff7f"
+                                              strokeWidth="1"
+                                            />
+                                          </g>
+                                        );
+                                      })}
+                                    </>
+                                  )}
+                                </svg>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Advanced View: Weekly Analysis */}
+                    <section>
+                      <div className="flex items-center w-full mb-3">
+                        <h3 className="text-[9px] font-bold text-[#00e5ff] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Weekly Distribution</h3>
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/50 to-transparent"></div>
+                      </div>
+                      <div className="bg-[#141414] border border-gray-800/50 rounded-lg pt-4 px-4 pb-[5px]">
+                        <div className="h-[123px] relative">
+                          {(() => {
+                            const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                            // Query returns 0=Sunday...6=Saturday. We want Monday=0...Sunday=6
+                            const statsByDay = [1, 2, 3, 4, 5, 6, 0].map((d) => {
+                              const s = beltWeeklyStats.find(st => st.day === d) || { day: d, total: 0, special: 0 };
+                              return {
+                                ...s,
+                                percentage: s.total > 0 ? (s.special / s.total) * 100 : 0
+                              };
+                            });
+
+                            const maxCount = Math.max(...statsByDay.map(s => s.total), 1);
+                            const maxPerc = Math.max(...statsByDay.map(s => s.percentage), 1);
+
+                            const points = statsByDay.map((s, i) => {
+                              const x = (i + 0.5) * 100; // 0-700 range for 7 days
+                              const y = 15 + (1 - (s.percentage / Math.max(maxPerc, 1))) * 30;
+                              return `${x},${y}`;
+                            });
+                            const lineD = points.length > 1 ? `M ${points.join(' L ')}` : '';
+
+                            return (
+                              <>
+                                {/* Bar Layer (Total Count) */}
+                                <div className="absolute inset-0 flex items-end space-x-2 px-1 z-20">
+                                  {statsByDay.map((s, index) => {
+                                    const heightPerc = (s.total / maxCount) * 60;
+                                    return (
+                                      <div
+                                        key={index}
+                                        className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-default"
+                                      >
+                                        <div className="absolute -top-[49px] left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-[#00e5ff]/50 text-[#00e5ff] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col items-center min-w-[100px]">
+                                          {(() => {
+                                            const fullDayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                                            return <span className="font-bold border-b border-[#00e5ff]/30 pb-1 mb-1 w-full text-center">{fullDayNames[index]}</span>;
+                                          })()}
+                                          <div className="flex flex-col w-full space-y-0.5">
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Belts Run:</span>
+                                              <span className="font-bold">{s.total}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4">
+                                              <span className="text-gray-400 text-[9px]">Special:</span>
+                                              <span className="font-bold">{s.special}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center space-x-4 text-[#00ff7f]">
+                                              <span className="opacity-70 text-[9px]">Success Rate:</span>
+                                              <span className="font-bold">{s.percentage.toFixed(1)}%</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div
+                                          className={`w-full transition-all duration-300 rounded-t-[3px] relative ${s.total > 0 ? 'bg-[#00e5ff]/10 border border-[#00e5ff]/20 group-hover:bg-[#00e5ff]/25 shadow-[0_4px_12px_rgba(0,229,255,0.05)]' : 'bg-[#00e5ff]/5'}`}
+                                          style={{ height: s.total > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
+                                        >
+                                          {s.total > 0 && (
+                                            <div className="absolute top-1 left-0 right-0 text-[8.5px] font-bold text-[#00e5ff]/60 text-center pointer-events-none">
+                                              {s.total}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-gray-600 mt-1 font-bold uppercase tracking-wider group-hover:text-gray-300 transition-colors">{dayNames[index]}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Line Layer (Success Rate) */}
+                                <svg
+                                  className="absolute inset-0 w-full h-full pointer-events-none z-10 px-1 overflow-visible"
+                                  viewBox="0 0 700 123"
+                                  preserveAspectRatio="none"
+                                >
+                                  {lineD && (
+                                    <>
+                                      <path
+                                        d={lineD}
+                                        fill="none"
+                                        stroke="#00ff7f"
+                                        strokeWidth="1.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="drop-shadow-[0_0_4px_rgba(0,255,127,0.2)]"
+                                      />
+                                      {statsByDay.map((s, i) => {
+                                        if (s.total === 0) return null;
+                                        const x = (i + 0.5) * 100;
+                                        const y = 15 + (1 - (s.percentage / Math.max(maxPerc, 1))) * 30;
+                                        return (
+                                          <g key={i}>
+                                            <circle
+                                              cx={x}
+                                              cy={y}
+                                              r="1.8"
+                                              fill="#141414"
+                                              stroke="#00ff7f"
+                                              strokeWidth="1"
+                                            />
+                                            {s.total > 0 && (
+                                              <text
+                                                x={x}
+                                                y={y - 8}
+                                                textAnchor="middle"
+                                                fill="#00ff7f"
+                                                className="text-[14px] font-black font-mono drop-shadow-[0_0_2px_rgba(0,0,0,1)]"
+                                                style={{ fontSize: '15px' }}
+                                              >
+                                                {s.percentage.toFixed(0)}%
+                                              </text>
+                                            )}
+                                          </g>
+                                        );
+                                      })}
+                                    </>
+                                  )}
+                                </svg>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </section>
+                  </>
+                )}
+
+                {/* 30 Day Activity Chart - Always Visible */}
+                <section>
+                  <div className="flex items-center w-full mb-3">
+                    <h3 className="text-[9px] font-bold text-[#f0b419] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Last 30 Days Activity</h3>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/50 to-transparent"></div>
+                  </div>
+                  <div className="bg-transparent px-1">
+                    <div className="h-[80px] flex items-end space-x-1">
+                      {(() => {
+                        const days = Array.from({ length: 30 }).map((_, i) => {
+                          const d = new Date();
+                          d.setDate(d.getDate() - (29 - i));
+                          return format(d, 'yyyy-MM-dd');
+                        });
+                        const maxCountVal = Math.max(...beltDailyStats.map(d => d.count), 1);
+
+                        return days.map((dayStr, index) => {
+                          const stat = beltDailyStats.find(s => s.date === dayStr);
+                          const count = stat ? stat.count : 0;
+                          const heightPerc = (count / maxCountVal) * 100;
+
+                          const isLeftEdge = index === 0;
+                          const isRightEdge = index === 29;
+
+                          return (
+                            <div
+                              key={dayStr}
+                              className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-pointer"
+                              onClick={() => {
+                                setDateRangeType('Custom');
+                                setCustomStartDate(dayStr);
+                                setCustomEndDate(dayStr);
+                              }}
+                            >
+                              <div className={`absolute -top-16 ${isLeftEdge ? 'left-0' : isRightEdge ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${isLeftEdge ? 'items-start' : isRightEdge ? 'items-end' : 'items-center'} min-w-[120px]`}>
+                                <span className="font-bold border-b border-[#f0b419]/30 pb-1 mb-1 w-full text-center">{format(new Date(dayStr), 'EEEE, MMM dd')}</span>
+                                <div className="flex flex-col w-full space-y-0.5">
+                                  <div className="flex justify-between items-center space-x-4">
+                                    <span className="text-gray-400 text-[9px]">Belts Tracked:</span>
+                                    <span className="font-bold">{count}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center space-x-4 text-[#00ff7f]">
+                                    <span className="opacity-70 text-[9px]">Special:</span>
+                                    <span className="font-bold">{stat?.escalations || 0}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              {count > 0 && (
+                                <div className="text-[9px] font-bold text-[#f0b419]/70 group-hover:text-[#f0b419] mb-1 transition-colors z-10">
+                                  {count}
+                                </div>
+                              )}
+                              <div
+                                className={`w-full transition-all duration-300 rounded-t-[2px] ${count > 0 ? 'bg-[#f0b419]/60 group-hover:bg-[#f0b419] shadow-[0_0_8px_rgba(240,180,25,0.4)]' : 'bg-[#f0b419]/10'}`}
+                                style={{ height: count > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
+                              ></div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
+
 
 
             {currentView === 'settings' && (
@@ -2500,7 +3153,7 @@ export default function App() {
                                 <span className="text-gray-500 mr-1">-</span>
                                 {icons.map((icon, idx) => (
                                   <span key={idx}>
-                                    <span className={`text-[10px] tracking-wider ${icon.color === 'gold' ? 'text-[#f0b419]' : icon.color === 'green' ? 'text-[#00ff7f]' : 'text-[#00e5ff]'}`}>
+                                    <span className={`text-[10px] tracking-wider ${icon.color === 'gold' ? 'text-[#f0b419]' : icon.color === 'green' ? 'text-[#00ff7f]' : icon.color === 'blue' ? 'text-[#00e5ff]' : 'text-[#00e5ff]'}`}>
                                       {icon.label}
                                     </span>
                                     {idx < icons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
@@ -2510,7 +3163,7 @@ export default function App() {
                             )}
                           </div>
                           <button
-                            onClick={() => requestDelete(log.id)}
+                            onClick={() => setLogToDelete(log.id)}
                             className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
                             title="Delete log"
                           >
@@ -2526,6 +3179,182 @@ export default function App() {
                     )}
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Tracked Belts Modal */}
+          {isTrackedBeltsModalOpen && (
+            <div className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col z-50">
+              <div className="p-4 border-b border-[#f0b419]/30 flex justify-between items-center bg-[#0a0a0a]">
+                <div className="flex items-baseline space-x-3">
+                  <h2 className="text-lg font-bold text-[#f0b419] uppercase tracking-wider">
+                    Tracked Belts
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setIsTrackedBeltsModalOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors p-1"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div
+                className="flex-1 overflow-y-auto p-4 space-y-2"
+                onScroll={(e) => {
+                  const target = e.currentTarget;
+                  if (target.scrollHeight - target.scrollTop <= target.clientHeight + 100) {
+                    fetchTrackedBelts();
+                  }
+                }}
+              >
+                {trackedBelts.length === 0 && !isLoadingTrackedBelts ? (
+                  <p className="text-sm text-gray-500 italic text-center py-8">
+                    No belts tracked yet.
+                  </p>
+                ) : (
+                  <>
+                    {trackedBelts.map((log) => {
+                      const dateObj = new Date(log.timestamp + 'Z');
+                      const timeStr = isNaN(dateObj.getTime())
+                        ? log.timestamp
+                        : format(dateObj, 'MMM dd HH:mm:ss');
+
+                      const outcomeIcons: { label: string; color: 'gold' | 'blue' | 'green' | 'emerald' | 'cyan' | 'purple' }[] = [];
+                      if (log.was_faction_spawn === 1) outcomeIcons.push({ label: 'FAC-SUB', color: 'emerald' });
+                      if (log.was_hauler_spawn === 1) outcomeIcons.push({ label: 'Hauler', color: 'cyan' });
+                      if (log.was_officer_spawn === 1) outcomeIcons.push({ label: `Officer: ${log.officer_name || 'Unknown'}`, color: 'purple' });
+
+                      return (
+                        <div
+                          key={log.id}
+                          className="flex items-center justify-between bg-[#141414] border border-gray-800 p-2 rounded text-xs group"
+                        >
+                          <div className="flex-1 truncate pr-2">
+                            <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                            {(() => {
+                              const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
+                              return duration ? <span className="text-[#00ff7f]/70 font-mono text-[10px] mr-2">({duration})</span> : null;
+                            })()}
+                            <span className="text-gray-200 font-medium">
+                              {log.location_system || 'Unknown System'}
+                            </span>
+                            {outcomeIcons.length > 0 && (
+                              <span className="ml-2">
+                                <span className="text-gray-500 mr-1">-</span>
+                                {outcomeIcons.map((icon, idx) => (
+                                  <span key={idx}>
+                                    <span className={`text-[10px] font-bold tracking-wider ${icon.color === 'emerald' ? 'text-[#00ff7f]' :
+                                        icon.color === 'cyan' ? 'text-[#00e5ff]' :
+                                          icon.color === 'purple' ? 'text-[#bf94ff]' :
+                                            'text-[#f0b419]'
+                                      }`}>
+                                      {icon.label}
+                                    </span>
+                                    {idx < outcomeIcons.length - 1 && <span className="text-gray-600 mx-0.5">,</span>}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setBeltLogToDelete(log.id)}
+                            className="text-gray-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                            title="Delete log"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {isLoadingTrackedBelts && (
+                      <div className="p-4 flex justify-center">
+                        <div className="w-6 h-6 border-2 border-[#f0b419] border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Delete Log Confirmation (Combat) */}
+          {logToDelete !== null && (
+            <div className="fixed inset-0 bg-[#0a0a0a]/90 backdrop-blur-sm flex items-center justify-center z-[60] animate-in fade-in duration-200">
+              <div className="bg-[#141414] border border-red-900 shadow-2xl rounded-lg p-6 max-w-[320px] w-full mx-4">
+                <h3 className="text-lg font-bold text-red-500 uppercase tracking-widest mb-2 flex items-center">
+                  <Trash2 size={20} className="mr-2" />
+                  Delete Log Entry?
+                </h3>
+                <p className="text-gray-400 text-xs mb-6 leading-relaxed">
+                  This will permanently remove the record from the database. Are you sure?
+                </p>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      if (db && logToDelete) {
+                        db.execute('DELETE FROM anom_logs WHERE id = $1', [logToDelete])
+                          .then(() => {
+                            setHistory(prev => prev.filter(l => l.id !== logToDelete));
+                            setTrackedSites(prev => prev.filter(l => l.id !== logToDelete));
+                            setFullHistory(prev => prev.filter(l => l.id !== logToDelete));
+                            setLogToDelete(null);
+                            playTone('delete');
+                          });
+                      }
+                    }}
+                    className="flex-1 py-2 bg-red-900 text-red-100 font-bold text-xs uppercase tracking-widest rounded hover:bg-red-700 transition-colors"
+                  >
+                    Delete record
+                  </button>
+                  <button
+                    onClick={() => setLogToDelete(null)}
+                    className="flex-1 py-2 bg-gray-800 text-gray-300 font-bold text-xs uppercase tracking-widest rounded hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Log Confirmation (Belt) */}
+          {beltLogToDelete !== null && (
+            <div className="fixed inset-0 bg-[#0a0a0a]/90 backdrop-blur-sm flex items-center justify-center z-[60] animate-in fade-in duration-200">
+              <div className="bg-[#141414] border border-red-900 shadow-2xl rounded-lg p-6 max-w-[320px] w-full mx-4">
+                <h3 className="text-lg font-bold text-red-500 uppercase tracking-widest mb-2 flex items-center">
+                  <Trash2 size={20} className="mr-2" />
+                  Delete Belt Log?
+                </h3>
+                <p className="text-gray-400 text-xs mb-6 leading-relaxed">
+                  This will permanently remove this belt record. Are you sure?
+                </p>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      if (db && beltLogToDelete) {
+                        db.execute('DELETE FROM belt_logs WHERE id = $1', [beltLogToDelete])
+                          .then(() => {
+                            setBeltHistory(prev => prev.filter(l => l.id !== beltLogToDelete));
+                            setTrackedBelts(prev => prev.filter(l => l.id !== beltLogToDelete));
+                            setBeltLogToDelete(null);
+                            playTone('delete');
+                            // Refresh stats
+                            fetchBeltStats(db);
+                          });
+                      }
+                    }}
+                    className="flex-1 py-2 bg-red-900 text-red-100 font-bold text-xs uppercase tracking-widest rounded hover:bg-red-700 transition-colors"
+                  >
+                    Delete record
+                  </button>
+                  <button
+                    onClick={() => setBeltLogToDelete(null)}
+                    className="flex-1 py-2 bg-gray-800 text-gray-300 font-bold text-xs uppercase tracking-widest rounded hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}

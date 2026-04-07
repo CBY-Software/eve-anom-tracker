@@ -2,12 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.5] - 2026-04-05
+## [0.4.5] - 2026-04-07
 
-### Advanced Statistics
-- Added **Hourly & Daily Analysis** charts featuring a layered HUD aesthetic with site count bars and success rate trend lines for better performance tracking.
-- Optimized and stabilized the dashboard layout for a pixel-perfect, non-bouncing transition when switching between statistics views.
-- Enhanced tooltips and labels with detailed site counts, "Special Outcome" tracking, and full weekday names.
+### Belt Statistics
+- Added a dedicated **Belt Statistics** dashboard with detailed tracking of Faction Subcapitals, Hauler NPCs, and Officer spawns.
+- Implemented **Hourly & Weekly Activity** charts for belt tracking with trend-line mapping and special outcome percentages.
+- Added a comprehensive **Belt History** modal with run-time duration tracking and infinite scrolling support.
+
+### Added
+- Added **Hourly & Daily Analysis** for **Combat Statistics** charts featuring a layered HUD aesthetic with site count bars and success rate trend lines for better performance tracking.
 
 ### Application Updates
 - Added a "Close Application" button to update notifications to help users exit the app before running a new installer.
