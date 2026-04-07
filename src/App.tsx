@@ -139,7 +139,7 @@ function getBootstrapSettings(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
-type ViewState = 'combat' | 'belt' | 'statistics' | 'settings';
+type ViewState = 'combat' | 'belt' | 'combatStats' | 'settings';
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_IPC__' in window);
 
@@ -628,7 +628,7 @@ export default function App() {
         let width = s.orientation === 'portrait' ? 360 : 700;
         let height = s.orientation === 'portrait' ? 725 : 450;
 
-        if (currentView === 'statistics' || currentView === 'settings') {
+        if (currentView === 'combatStats' || currentView === 'settings') {
           width = 800;
           height = 825;
         }
@@ -639,7 +639,7 @@ export default function App() {
 
         await invoke('apply_window_settings', {
           alwaysOnTop: s.alwaysOnTop,
-          scale: (currentView === 'statistics' || currentView === 'settings') ? 1.0 : s.globalScale,
+          scale: (currentView === 'combatStats' || currentView === 'settings') ? 1.0 : s.globalScale,
           width,
           height
         });
@@ -651,7 +651,7 @@ export default function App() {
 
   useEffect(() => {
     applySettings(settings);
-    if (db && currentView === 'statistics') {
+    if (db && currentView === 'combatStats') {
       fetchStats(db, statsFilter);
     }
   }, [isCollapsed, currentView, statsFilter, dateRangeType, customStartDate, customEndDate]);
@@ -959,7 +959,7 @@ export default function App() {
       );
       setFullHistory(fullResult as AnomLog[]);
 
-      if (currentView === 'statistics') {
+      if (currentView === 'combatStats') {
         fetchStats(database, statsFilter);
       }
     } catch (error) {
@@ -1307,9 +1307,9 @@ export default function App() {
   };
 
   const isLandscape = settings.orientation === 'landscape';
-  const isStatistics = currentView === 'statistics';
+  const isCombatStats = currentView === 'combatStats';
   const isSettings = currentView === 'settings';
-  const isExpandedView = isStatistics || isSettings;
+  const isExpandedView = isCombatStats || isSettings;
   const appWidth = isExpandedView ? 800 : (isLandscape ? 700 : 360);
   const appHeight = isCollapsed ? 28 : (isExpandedView ? 825 : (isLandscape ? 450 : 725));
 
@@ -1338,10 +1338,10 @@ export default function App() {
                 Combat Log
               </button>
               <button
-                onClick={() => setCurrentView('statistics')}
-                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'statistics' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                onClick={() => setCurrentView('combatStats')}
+                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'combatStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
               >
-                Statistics
+                Combat Stats
               </button>
               <button
                 onClick={() => setCurrentView('belt')}
@@ -1805,7 +1805,7 @@ export default function App() {
                 </div>
               </div>
             )}
-            {currentView === 'statistics' && stats && (
+            {currentView === 'combatStats' && stats && (
               <div className="flex-1 overflow-y-auto pt-[5px] px-6 pb-2 space-y-6 animate-in fade-in duration-500">
                 {/* Header Row: Sub-view Toggle & Filters */}
                 <div className="flex items-center justify-between mb-4 mt-1">
