@@ -1,7 +1,7 @@
 import { ChangeEvent, useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Folder, Save, Loader2, ExternalLink, Search, X, Plus, Activity, RefreshCw, Power, Monitor, MapPin, Database, Info, Users, Trash2 } from 'lucide-react';
+import { Folder, Save, Loader2, ExternalLink, Search, X, Plus, Activity, RefreshCw, Power, Monitor, MapPin, Database, Info, Users, Trash2, Clock, Globe } from 'lucide-react';
 import systemsData from './data/solar_systems.json';
 import { ESI_CLIENT_ID } from './constants';
 
@@ -25,6 +25,7 @@ export interface AppSettings {
   lastAutoBackup?: string;
   preferredSystems: string[];
   logShortcut: string;
+  timeDisplay: 'eve' | 'local';
 }
 
 interface SettingsProps {
@@ -41,8 +42,8 @@ interface SettingsProps {
   onRemoveAccount: (characterId: number) => void;
   onSyncWallets: () => void;
   isSyncingWallet: boolean;
-  activeTab: 'window' | 'locations' | 'characters' | 'backup' | 'about';
-  onActiveTabChange: (tab: 'window' | 'locations' | 'characters' | 'backup' | 'about') => void;
+  activeTab: 'application' | 'window' | 'locations' | 'characters' | 'backup' | 'about';
+  onActiveTabChange: (tab: 'application' | 'window' | 'locations' | 'characters' | 'backup' | 'about') => void;
 }
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_IPC__' in window);
@@ -211,6 +212,16 @@ export default function Settings({
             <span>Window</span>
           </button>
           <button
+            onClick={() => onActiveTabChange('application')}
+            className={`h-full px-4 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${activeTab === 'application'
+              ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
+              : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
+              }`}
+          >
+            <Clock size={9} className={activeTab === 'application' ? 'opacity-100' : 'opacity-40'} />
+            <span>Application</span>
+          </button>
+          <button
             onClick={() => onActiveTabChange('locations')}
             className={`h-full px-4 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${activeTab === 'locations'
               ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
@@ -254,6 +265,90 @@ export default function Settings({
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pt-4 pb-8 space-y-6 text-gray-300">
+        {activeTab === 'application' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <h2 className="text-sm font-semibold text-[#f0b419] uppercase tracking-wider mb-4 border-b border-[#f0b419]/30 pb-2">
+              Application Settings
+            </h2>
+
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Clock size={14} className="text-[#f0b419]" />
+                  <label className="text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Time Display
+                  </label>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  <button
+                    onClick={() => handleChange('timeDisplay', 'eve')}
+                    className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
+                      settings.timeDisplay === 'eve'
+                        ? 'bg-[#f0b419]/10 border-[#f0b419]/50 shadow-[0_0_15px_rgba(240,180,25,0.05)]'
+                        : 'bg-[#141414] border-gray-800 hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        settings.timeDisplay === 'eve' ? 'border-[#f0b419]' : 'border-gray-600'
+                      }`}>
+                        {settings.timeDisplay === 'eve' && <div className="w-2 h-2 rounded-full bg-[#f0b419]" />}
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className={`text-xs font-bold uppercase tracking-wide ${
+                          settings.timeDisplay === 'eve' ? 'text-white' : 'text-gray-400'
+                        }`}>Use EVE Time</span>
+                        <span className="text-[10px] text-gray-500 mt-0.5">Displays all timestamps in UTC (EVE Standard Time)</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] font-mono text-gray-500 uppercase">Current GMT</span>
+                      <span className="text-sm font-mono font-bold text-[#f0b419]">
+                        {new Date().getUTCHours().toString().padStart(2, '0')}:{new Date().getUTCMinutes().toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleChange('timeDisplay', 'local')}
+                    className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
+                      settings.timeDisplay === 'local'
+                        ? 'bg-[#f0b419]/10 border-[#f0b419]/50 shadow-[0_0_15px_rgba(240,180,25,0.05)]'
+                        : 'bg-[#141414] border-gray-800 hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        settings.timeDisplay === 'local' ? 'border-[#f0b419]' : 'border-gray-600'
+                      }`}>
+                        {settings.timeDisplay === 'local' && <div className="w-2 h-2 rounded-full bg-[#f0b419]" />}
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className={`text-xs font-bold uppercase tracking-wide ${
+                          settings.timeDisplay === 'local' ? 'text-white' : 'text-gray-400'
+                        }`}>Use Local Time</span>
+                        <span className="text-[10px] text-gray-500 mt-0.5">Displays all timestamps in your system's local time</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] font-mono text-gray-500 uppercase">
+                        Current Local (GMT{new Date().getTimezoneOffset() <= 0 ? '+' : '-'}{Math.abs(Math.floor(new Date().getTimezoneOffset() / 60))})
+                      </span>
+                      <span className="text-sm font-mono font-bold text-[#f0b419]">
+                        {new Date().getHours().toString().padStart(2, '0')}:{new Date().getMinutes().toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-600 italic px-1">
+                  * This setting affects how logs are filtered, grouped in statistics, and displayed throughout the application.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'window' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <h2 className="text-sm font-semibold text-[#f0b419] uppercase tracking-wider mb-4 border-b border-[#f0b419]/30 pb-2">

@@ -163,6 +163,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoBackupFrequency: 'off',
   preferredSystems: [],
   logShortcut: 'CommandOrControl+Shift+L',
+  timeDisplay: 'eve',
 };
 
 // Bootstrap key layout settings synchronously from localStorage to avoid
@@ -328,7 +329,7 @@ export default function App() {
   const [hasMoreJournal, setHasMoreJournal] = useState(true);
   const [isLoadingJournal, setIsLoadingJournal] = useState(false);
   const [journalShowScrollTop, setJournalShowScrollTop] = useState(false);
-  const [settingsActiveTab, setSettingsActiveTab] = useState<'window' | 'locations' | 'characters' | 'backup' | 'about'>('window');
+  const [settingsActiveTab, setSettingsActiveTab] = useState<'application' | 'window' | 'locations' | 'characters' | 'backup' | 'about'>('window');
 
   const showToast = (message: string, duration = 3000) => {
     setToastMessage(message);
@@ -353,6 +354,24 @@ export default function App() {
       console.error('Failed to open URL:', e);
       showToast('Failed to open browser');
     }
+  };
+
+  const tm = settings.timeDisplay === 'local' ? ", 'localtime'" : "";
+
+  const formatTimestamp = (ts: string, fmt: string) => {
+    if (!ts) return '';
+    // Handle both space and T separators, and ensure it's treated as UTC
+    const normalizedTs = ts.includes('T') ? ts : ts.replace(' ', 'T');
+    const d = new Date(normalizedTs.endsWith('Z') ? normalizedTs : normalizedTs + 'Z');
+    
+    if (isNaN(d.getTime())) return ts; // Fallback for invalid dates
+    
+    if (settings.timeDisplay === 'eve') {
+      const offset = d.getTimezoneOffset();
+      const utcDate = new Date(d.getTime() + offset * 60000);
+      return format(utcDate, fmt);
+    }
+    return format(d, fmt);
   };
 
   // Format a yyyy-MM-dd string using the actual OS date format from Windows registry
@@ -660,7 +679,12 @@ export default function App() {
   };
 
   const getDateRange = (type: string, customStart: string, customEnd: string) => {
-    const now = new Date();
+    const rawNow = new Date();
+    // If EVE time is selected, adjust "now" to be UTC so format(now, ...) returns UTC date
+    const now = settings.timeDisplay === 'eve' 
+      ? new Date(rawNow.getTime() + rawNow.getTimezoneOffset() * 60000)
+      : rawNow;
+      
     const today = format(now, 'yyyy-MM-dd');
 
     switch (type) {
@@ -882,8 +906,7 @@ export default function App() {
             if (!this.beltLogs) this.beltLogs = [];
             // Helper to get local date from UTC timestamp string
             const getLocalDate = (ts: string) => {
-              const d = new Date(ts + 'Z');
-              return format(d, 'yyyy-MM-dd');
+              return formatTimestamp(ts, 'yyyy-MM-dd');
             };
 
             const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);
@@ -900,12 +923,12 @@ export default function App() {
                 logsToUse = logsToUse.filter(l => l.site_type === filterVal);
               }
 
-              if (query.includes("date(timestamp, 'localtime') >= ?")) {
+              if (query.includes("date(timestamp") && query.includes(">=")) {
                 const startVal = bindValues![currentParamIdx++];
                 logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) >= startVal);
               }
 
-              if (query.includes("date(timestamp, 'localtime') <= ?")) {
+              if (query.includes("date(timestamp") && query.includes("<=")) {
                 const endVal = bindValues![currentParamIdx++];
                 logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) <= endVal);
               }
@@ -937,12 +960,12 @@ export default function App() {
                 let logsToUse = [...this.beltLogs];
                 let currentParamIdx = 0;
 
-                if (query.includes("date(timestamp, 'localtime') >= ?")) {
+                if (query.includes("date(timestamp") && query.includes(">=")) {
                   const startVal = bindValues![currentParamIdx++];
                   logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) >= startVal);
                 }
 
-                if (query.includes("date(timestamp, 'localtime') <= ?")) {
+                if (query.includes("date(timestamp") && query.includes("<=")) {
                   const endVal = bindValues![currentParamIdx++];
                   logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) <= endVal);
                 }
@@ -970,12 +993,12 @@ export default function App() {
                 logsToUse = logsToUse.filter(l => l.site_type === filterVal);
               }
 
-              if (query.includes("date(timestamp, 'localtime') >= ?")) {
+              if (query.includes("date(timestamp") && query.includes(">=")) {
                 const startVal = bindValues![currentParamIdx++];
                 logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) >= startVal);
               }
 
-              if (query.includes("date(timestamp, 'localtime') <= ?")) {
+              if (query.includes("date(timestamp") && query.includes("<=")) {
                 const endVal = bindValues![currentParamIdx++];
                 logsToUse = logsToUse.filter(l => getLocalDate(l.timestamp) <= endVal);
               }
@@ -997,7 +1020,7 @@ export default function App() {
               }
               return [...filtered].reverse() as unknown as T;
             }
-            if (query.includes("GROUP BY date(timestamp, 'localtime')")) {
+            if (query.includes("GROUP BY date(timestamp")) {
               return [] as unknown as T;
             }
             return [] as unknown as T;
@@ -1039,13 +1062,13 @@ export default function App() {
       // 1. Daily Stats (Last 30 Days) - for the activity chart at the bottom
       const dailyQuery = `
         SELECT 
-          date(timestamp, 'localtime') as date, 
+          date(timestamp${tm}) as date, 
           COUNT(*) as count,
           SUM(CASE WHEN was_faction_spawn=1 OR was_hauler_spawn=1 OR was_officer_spawn=1 THEN 1 ELSE 0 END) as escalations,
           0 as spawns
         FROM belt_logs 
-        WHERE timestamp >= date('now', 'localtime', '-30 days')
-        GROUP BY date(timestamp, 'localtime') ORDER BY date ASC
+        WHERE timestamp >= date('now'${tm}, '-30 days')
+        GROUP BY date(timestamp${tm}) ORDER BY date ASC
       `;
       const dailyResult = await database.select(dailyQuery);
       setBeltDailyStats(dailyResult as DailyStat[]);
@@ -1056,11 +1079,11 @@ export default function App() {
 
       const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
       if (dateRange.start) {
-        conditions.push("date(timestamp, 'localtime') >= ?");
+        conditions.push(`date(timestamp${tm}) >= ?`);
         params.push(dateRange.start);
       }
       if (dateRange.end) {
-        conditions.push("date(timestamp, 'localtime') <= ?");
+        conditions.push(`date(timestamp${tm}) <= ?`);
         params.push(dateRange.end);
       }
 
@@ -1101,7 +1124,7 @@ export default function App() {
       // 4. Hourly Analysis
       const hourlyQuery = `
         SELECT 
-          CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) as hour,
+          CAST(strftime('%H', timestamp${tm}) AS INTEGER) as hour,
           COUNT(*) as total,
           SUM(CASE WHEN was_faction_spawn=1 OR was_hauler_spawn=1 OR was_officer_spawn=1 THEN 1 ELSE 0 END) as special
         FROM belt_logs${whereClause}
@@ -1114,7 +1137,7 @@ export default function App() {
       // 5. Weekly Analysis
       const weeklyQuery = `
         SELECT 
-          CAST(strftime('%w', timestamp, 'localtime') AS INTEGER) as day,
+          CAST(strftime('%w', timestamp${tm}) AS INTEGER) as day,
           COUNT(*) as total,
           SUM(CASE WHEN was_faction_spawn=1 OR was_hauler_spawn=1 OR was_officer_spawn=1 THEN 1 ELSE 0 END) as special
         FROM belt_logs${whereClause}
@@ -1144,11 +1167,11 @@ export default function App() {
 
       const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
       if (dateRange.start) {
-        conditions.push("date(timestamp, 'localtime') >= ?");
+        conditions.push(`date(timestamp${tm}) >= ?`);
         params.push(dateRange.start);
       }
       if (dateRange.end) {
-        conditions.push("date(timestamp, 'localtime') <= ?");
+        conditions.push(`date(timestamp${tm}) <= ?`);
         params.push(dateRange.end);
       }
 
@@ -1185,11 +1208,11 @@ export default function App() {
 
       const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
       if (dateRange.start) {
-        conditions.push("date(timestamp, 'localtime') >= ?");
+        conditions.push(`date(timestamp${tm}) >= ?`);
         params.push(dateRange.start);
       }
       if (dateRange.end) {
-        conditions.push("date(timestamp, 'localtime') <= ?");
+        conditions.push(`date(timestamp${tm}) <= ?`);
         params.push(dateRange.end);
       }
 
@@ -1204,7 +1227,7 @@ export default function App() {
       const summaryQuery = `
         SELECT 
           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total,
-          SUM(CASE WHEN date(timestamp, 'localtime') = date('now', 'localtime') AND amount > 0 THEN amount ELSE 0 END) as today,
+          SUM(CASE WHEN date(timestamp${tm}) = date('now'${tm}) AND amount > 0 THEN amount ELSE 0 END) as today,
           SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty,
           COUNT(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN 1 END) as bounty_count,
           MAX(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty_max,
@@ -1219,7 +1242,7 @@ export default function App() {
       // 2. 7-Day Avg (Special query)
       const avgQuery = `
         SELECT SUM(amount) / 7 as avg FROM wallet_journal 
-        WHERE date(timestamp, 'localtime') > date('now', 'localtime', '-7 days') AND amount > 0
+        WHERE date(timestamp${tm}) > date('now'${tm}, '-7 days') AND amount > 0
       `;
       const avgResult = await database.select(avgQuery);
       const avgRow = (avgResult as any[])[0];
@@ -1227,10 +1250,10 @@ export default function App() {
       // 3. Daily Stats (Last 30 Days) for Chart
       const dailyQuery = `
         SELECT 
-          date(timestamp, 'localtime') as date,
+          date(timestamp${tm}) as date,
           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as amount
         FROM wallet_journal
-        WHERE timestamp >= date('now', 'localtime', '-30 days')
+        WHERE timestamp >= date('now'${tm}, '-30 days')
         GROUP BY date ORDER BY date ASC
       `;
       const dailyResult = await database.select(dailyQuery);
@@ -1273,11 +1296,11 @@ export default function App() {
 
       const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
       if (dateRange.start) {
-        conditions.push("date(timestamp, 'localtime') >= ?");
+        conditions.push(`date(timestamp${tm}) >= ?`);
         params.push(dateRange.start);
       }
       if (dateRange.end) {
-        conditions.push("date(timestamp, 'localtime') <= ?");
+        conditions.push(`date(timestamp${tm}) <= ?`);
         params.push(dateRange.end);
       }
  
@@ -1345,12 +1368,12 @@ export default function App() {
     try {
       let dailyQuery = `
         SELECT 
-          date(timestamp, 'localtime') as date, 
+          date(timestamp${tm}) as date, 
           COUNT(*) as count,
           SUM(CASE WHEN was_ded_escalation=1 OR was_occ_mine_escalation=1 OR was_cap_stag_escalation=1 OR was_shld_starb_escalation=1 OR was_attack_site_escalation=1 THEN 1 ELSE 0 END) as escalations,
           SUM(CASE WHEN was_faction_npc_spawn=1 OR was_capital_spawn=1 OR was_faction_capital_spawn=1 OR was_titan_spawn=1 THEN 1 ELSE 0 END) as spawns
         FROM anom_logs 
-        WHERE timestamp >= date('now', 'localtime', '-30 days')
+        WHERE timestamp >= date('now'${tm}, '-30 days')
       `;
       const dailyParams: any[] = [];
 
@@ -1358,7 +1381,7 @@ export default function App() {
         dailyQuery += " AND site_type = ?";
         dailyParams.push(filter);
       }
-      dailyQuery += " GROUP BY date(timestamp, 'localtime') ORDER BY date ASC";
+      dailyQuery += ` GROUP BY date(timestamp${tm}) ORDER BY date ASC`;
 
       const dailyResult = await database.select(dailyQuery, dailyParams);
       setDailyStats(dailyResult as DailyStat[]);
@@ -1389,11 +1412,11 @@ export default function App() {
 
       const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
       if (dateRange.start) {
-        conditions.push("date(timestamp, 'localtime') >= ?");
+        conditions.push(`date(timestamp${tm}) >= ?`);
         params.push(dateRange.start);
       }
       if (dateRange.end) {
-        conditions.push("date(timestamp, 'localtime') <= ?");
+        conditions.push(`date(timestamp${tm}) <= ?`);
         params.push(dateRange.end);
       }
 
@@ -1438,7 +1461,7 @@ export default function App() {
       // Hourly stats query
       const hourlyQuery = `
         SELECT 
-          CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) as hour,
+          CAST(strftime('%H', timestamp${tm}) AS INTEGER) as hour,
           COUNT(*) as total,
           SUM(CASE WHEN was_ded_escalation=1 OR was_occ_mine_escalation=1 OR was_cap_stag_escalation=1 OR was_shld_starb_escalation=1 OR was_attack_site_escalation=1 OR was_faction_npc_spawn=1 OR was_capital_spawn=1 OR was_faction_capital_spawn=1 OR was_titan_spawn=1 THEN 1 ELSE 0 END) as special
         FROM anom_logs${whereClause}
@@ -1451,7 +1474,7 @@ export default function App() {
       // Weekly stats query
       const weeklyQuery = `
         SELECT 
-          CAST(strftime('%w', timestamp, 'localtime') AS INTEGER) as day,
+          CAST(strftime('%w', timestamp${tm}) AS INTEGER) as day,
           COUNT(*) as total,
           SUM(CASE WHEN was_ded_escalation=1 OR was_occ_mine_escalation=1 OR was_cap_stag_escalation=1 OR was_shld_starb_escalation=1 OR was_attack_site_escalation=1 OR was_faction_npc_spawn=1 OR was_capital_spawn=1 OR was_faction_capital_spawn=1 OR was_titan_spawn=1 THEN 1 ELSE 0 END) as special
         FROM anom_logs${whereClause}
@@ -1487,11 +1510,11 @@ export default function App() {
 
       const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
       if (dateRange.start) {
-        conditions.push("date(timestamp, 'localtime') >= ?");
+        conditions.push(`date(timestamp${tm}) >= ?`);
         params.push(dateRange.start);
       }
       if (dateRange.end) {
-        conditions.push("date(timestamp, 'localtime') <= ?");
+        conditions.push(`date(timestamp${tm}) <= ?`);
         params.push(dateRange.end);
       }
 
@@ -2006,7 +2029,11 @@ export default function App() {
                   
                   // Fill gaps in last 30 days
                   const chartData = Array.from({ length: 30 }, (_, i) => {
-                    const date = format(subDays(new Date(), 29 - i), 'yyyy-MM-dd');
+                    const now = new Date();
+                    const baseDate = settings.timeDisplay === 'eve' 
+                      ? new Date(now.getTime() + now.getTimezoneOffset() * 60000)
+                      : now;
+                    const date = format(subDays(baseDate, 29 - i), 'yyyy-MM-dd');
                     const found = daily.find(d => d.date === date);
                     return { date, amount: found?.amount || 0 };
                   });
@@ -2101,8 +2128,8 @@ export default function App() {
                     <div key={entry.ref_id} className="bg-[#1a1a1a] border border-gray-800/50 p-2.5 rounded-lg flex items-center justify-between text-xs hover:border-gray-700 transition-colors animate-in fade-in slide-in-from-bottom-1 duration-300">
                       <div className="flex-1 flex items-center space-x-4 min-w-0">
                         <div className="flex flex-col items-center font-mono whitespace-nowrap min-w-[55px]">
-                          <div className="text-[11px] font-bold text-gray-400">{format(new Date(entry.timestamp + 'Z'), 'HH:mm:ss')}</div>
-                          <div className="text-[11px] font-bold text-gray-400 uppercase">{format(new Date(entry.timestamp + 'Z'), 'MMM dd')}</div>
+                          <div className="text-[11px] font-bold text-gray-400">{formatTimestamp(entry.timestamp, 'HH:mm:ss')}</div>
+                          <div className="text-[11px] font-bold text-gray-400 uppercase">{formatTimestamp(entry.timestamp, 'MMM dd')}</div>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-gray-200 font-medium truncate text-[13px]">{entry.description || entry.ref_type}</div>
@@ -2445,11 +2472,7 @@ export default function App() {
                       </p>
                     ) : (
                       history.map((log) => {
-                        const dateObj = new Date(log.timestamp + 'Z');
-                        const timeStr = isNaN(dateObj.getTime())
-                          ? log.timestamp.split(' ')[1] || log.timestamp
-                          : format(dateObj, 'HH:mm:ss');
-
+                        const timeStr = formatTimestamp(log.timestamp, 'HH:mm:ss');
                         const icons = getActiveIcons(log);
 
                         return (
@@ -2606,11 +2629,7 @@ export default function App() {
                       </p>
                     ) : (
                       beltHistory.map((log) => {
-                        const dateObj = new Date(log.timestamp + 'Z');
-                        const timeStr = isNaN(dateObj.getTime())
-                          ? log.timestamp.split(' ')[1] || log.timestamp
-                          : format(dateObj, 'HH:mm:ss');
-
+                        const timeStr = formatTimestamp(log.timestamp, 'HH:mm:ss');
                         const outcomeIcons: { label: string; color: 'gold' | 'blue' | 'green' | 'emerald' | 'cyan' | 'purple' }[] = [];
                         if (log.was_faction_spawn === 1) outcomeIcons.push({ label: 'FAC-SUB', color: 'emerald' });
                         if (log.was_hauler_spawn === 1) outcomeIcons.push({ label: 'Hauler', color: 'cyan' });
@@ -3794,11 +3813,7 @@ export default function App() {
                 ) : (
                   <>
                     {trackedSites.map((log) => {
-                      const dateObj = new Date(log.timestamp + 'Z');
-                      const timeStr = isNaN(dateObj.getTime())
-                        ? log.timestamp
-                        : format(dateObj, 'MMM dd HH:mm:ss');
-
+                      const timeStr = formatTimestamp(log.timestamp, 'MMM dd HH:mm:ss');
                       const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
 
                       const icons = getActiveIcons(log);
@@ -3883,11 +3898,7 @@ export default function App() {
                 ) : (
                   <>
                     {trackedBelts.map((log) => {
-                      const dateObj = new Date(log.timestamp + 'Z');
-                      const timeStr = isNaN(dateObj.getTime())
-                        ? log.timestamp
-                        : format(dateObj, 'MMM dd HH:mm:ss');
-
+                      const timeStr = formatTimestamp(log.timestamp, 'MMM dd HH:mm:ss');
                       const outcomeIcons: { label: string; color: 'gold' | 'blue' | 'green' | 'emerald' | 'cyan' | 'purple' }[] = [];
                       if (log.was_faction_spawn === 1) outcomeIcons.push({ label: 'FAC-SUB', color: 'emerald' });
                       if (log.was_hauler_spawn === 1) outcomeIcons.push({ label: 'Hauler', color: 'cyan' });
@@ -4075,10 +4086,7 @@ export default function App() {
                   </p>
                 ) : (
                   fullHistory.map((log) => {
-                    const dateObj = new Date(log.timestamp + 'Z');
-                    const timeStr = isNaN(dateObj.getTime())
-                      ? log.timestamp
-                      : format(dateObj, 'HH:mm:ss');
+                    const timeStr = formatTimestamp(log.timestamp, 'HH:mm:ss');
 
                     const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
 
