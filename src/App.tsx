@@ -1,12 +1,13 @@
-import { useState, useEffect, ChangeEvent, useRef, MouseEvent } from 'react';
+import { useState, useEffect, ChangeEvent, useRef } from 'react';
 import systemsData from './data/solar_systems.json';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import Database from '@tauri-apps/plugin-sql';
 import { format, subDays } from 'date-fns';
-import { Trash2, Menu, X, Crosshair, BarChart2, Settings as SettingsIcon, Minus, ChevronUp, ChevronDown, Activity, ExternalLink, HardDrive, Calendar, Search, Plus } from 'lucide-react';
+import { Trash2, Menu, X, Crosshair, BarChart2, Settings as SettingsIcon, Minus, ChevronUp, ChevronDown, Activity, ExternalLink, HardDrive, Calendar, Search, Plus, RefreshCw } from 'lucide-react';
 import Settings, { AppSettings } from './Settings';
 import { useGlobalHotkeys } from './hooks/useGlobalHotkeys';
+import { ESI_CLIENT_ID } from './constants';
 
 interface AnomLog {
   id: number;
@@ -55,6 +56,20 @@ interface BeltStatsData {
   officerCount: number;
 }
 
+interface DailyIncomeStat {
+  date: string;
+  amount: number;
+}
+
+interface IncomeStatsData {
+  totalIncome: number;
+  todayIncome: number;
+  sevenDayAvg: number;
+  bountyTotal: number;
+  essTotal: number;
+  dailyIncome: DailyIncomeStat[];
+}
+
 interface StatsData {
   totalSites: number;
   successfulSites: number;
@@ -87,18 +102,18 @@ interface WeeklyStat {
 
 
 
-const StatCard = ({ label, count, total, color, highlighted = false, className = "" }: { label: string, count: number, total: number, color: 'green' | 'blue' | 'purple', highlighted?: boolean, className?: string }) => {
-  const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
-  const colorClass = color === 'green' ? 'text-[#00ff7f]' : color === 'purple' ? 'text-[#bf94ff]' : 'text-[#00e5ff]';
+const StatCard = ({ label, count, total, color, highlighted = false, className = "" }: { label: string, count: number, total: number, color: 'green' | 'blue' | 'purple' | 'gold', highlighted?: boolean, className?: string }) => {
+  const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : null;
+  const colorClass = color === 'green' ? 'text-[#00ff7f]' : color === 'purple' ? 'text-[#bf94ff]' : color === 'gold' ? 'text-[#f0b419]' : 'text-[#00e5ff]';
   const borderColor = highlighted
-    ? (color === 'green' ? 'border-[#00ff7f]/60' : color === 'purple' ? 'border-[#bf94ff]/60' : 'border-[#00e5ff]/60')
-    : (color === 'green' ? 'border-[#00ff7f]/20' : color === 'purple' ? 'border-[#bf94ff]/20' : 'border-[#00e5ff]/20');
-  const bgHover = color === 'green' ? 'hover:bg-[#00ff7f]/5' : color === 'purple' ? 'hover:bg-[#bf94ff]/5' : 'hover:bg-[#00e5ff]/5';
+    ? (color === 'green' ? 'border-[#00ff7f]/60' : color === 'purple' ? 'border-[#bf94ff]/60' : color === 'gold' ? 'border-[#f0b419]/60' : 'border-[#00e5ff]/60')
+    : (color === 'green' ? 'border-[#00ff7f]/20' : color === 'purple' ? 'border-[#bf94ff]/20' : color === 'gold' ? 'border-[#f0b419]/20' : 'border-[#00e5ff]/20');
+  const bgHover = color === 'green' ? 'hover:bg-[#00ff7f]/5' : color === 'purple' ? 'hover:bg-[#bf94ff]/5' : color === 'gold' ? 'hover:bg-[#f0b419]/5' : 'hover:bg-[#00e5ff]/5';
   const bgClass = highlighted
-    ? (color === 'green' ? 'bg-[#00ff7f]/5' : color === 'purple' ? 'bg-[#bf94ff]/5' : 'bg-[#00e5ff]/5')
+    ? (color === 'green' ? 'bg-[#00ff7f]/5' : color === 'purple' ? 'bg-[#bf94ff]/5' : color === 'gold' ? 'bg-[#f0b419]/5' : 'bg-[#00e5ff]/5')
     : 'bg-[#141414]';
   const shadowClass = highlighted
-    ? (color === 'green' ? 'shadow-[0_0_15px_rgba(0,255,127,0.1)]' : color === 'purple' ? 'shadow-[0_0_15px_rgba(191,148,255,0.1)]' : 'shadow-[0_0_15px_rgba(0,229,255,0.1)]')
+    ? (color === 'green' ? 'shadow-[0_0_15px_rgba(0,255,127,0.1)]' : color === 'purple' ? 'shadow-[0_0_15px_rgba(191,148,255,0.1)]' : color === 'gold' ? 'shadow-[0_0_15px_rgba(240,180,25,0.1)]' : 'shadow-[0_0_15px_rgba(0,229,255,0.1)]')
     : '';
 
   return (
@@ -108,11 +123,14 @@ const StatCard = ({ label, count, total, color, highlighted = false, className =
       </div>
       <div className="flex items-baseline justify-between">
         <div className={`${highlighted ? 'text-3xl' : 'text-2xl'} font-bold ${colorClass}`}>
-          {count}
+          {count.toLocaleString()}
+          {color === 'gold' && <span className="text-xs ml-1 opacity-60">M</span>}
         </div>
-        <div className={`text-xs font-mono ${highlighted ? 'text-gray-400' : 'text-gray-500'}`}>
-          {percentage}%
-        </div>
+        {percentage !== null && (
+          <div className={`text-xs font-mono ${highlighted ? 'text-gray-400' : 'text-gray-500'}`}>
+            {percentage}%
+          </div>
+        )}
       </div>
     </div>
   );
@@ -148,7 +166,7 @@ function getBootstrapSettings(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
-type ViewState = 'combat' | 'belt' | 'combatStats' | 'beltStats' | 'settings';
+type ViewState = 'combat' | 'belt' | 'combatStats' | 'beltStats' | 'incomeStats' | 'settings';
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_IPC__' in window);
 
@@ -270,6 +288,8 @@ export default function App() {
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [logToDelete, setLogToDelete] = useState<number | null>(null);
   const [beltLogToDelete, setBeltLogToDelete] = useState<number | null>(null);
+  const [characterToRemove, setCharacterToRemove] = useState<any | null>(null);
+  const [selectedCharacterId, setSelectedCharacterId] = useState<number | null>(null);
   const [isAutoBackupModalOpen, setIsAutoBackupModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<{ latest: string, current: string } | null>(null);
@@ -286,11 +306,20 @@ export default function App() {
   const [beltHourlyStats, setBeltHourlyStats] = useState<HourlyStat[]>([]);
   const [beltWeeklyStats, setBeltWeeklyStats] = useState<WeeklyStat[]>([]);
   const [beltDailyStats, setBeltDailyStats] = useState<DailyStat[]>([]);
+  const [incomeStats, setIncomeStats] = useState<IncomeStatsData | null>(null);
   const [isTrackedBeltsModalOpen, setIsTrackedBeltsModalOpen] = useState(false);
   const [trackedBelts, setTrackedBelts] = useState<BeltLog[]>([]);
   const [trackedBeltsPage, setTrackedBeltsPage] = useState(0);
   const [hasMoreTrackedBelts, setHasMoreTrackedBelts] = useState(true);
   const [isLoadingTrackedBelts, setIsLoadingTrackedBelts] = useState(false);
+  const [esiAccounts, setEsiAccounts] = useState<any[]>([]);
+  const [walletJournal, setWalletJournal] = useState<any[]>([]);
+  const [isSyncingWallet, setIsSyncingWallet] = useState(false);
+  const [journalPage, setJournalPage] = useState(0);
+  const [hasMoreJournal, setHasMoreJournal] = useState(true);
+  const [isLoadingJournal, setIsLoadingJournal] = useState(false);
+  const [journalShowScrollTop, setJournalShowScrollTop] = useState(false);
+  const [settingsActiveTab, setSettingsActiveTab] = useState<'window' | 'locations' | 'characters' | 'backup' | 'about'>('window');
 
   const showToast = (message: string, duration = 3000) => {
     setToastMessage(message);
@@ -461,6 +490,10 @@ export default function App() {
 
         // Initialize database
         await initDb();
+
+        const database = await Database.load(await invoke<string>('get_db_path'));
+        const accounts = await database.select('SELECT * FROM esi_accounts');
+        setEsiAccounts(accounts as any[]);
 
         // Calculate remaining time for splash screen
         const elapsedTime = Date.now() - startTime;
@@ -646,7 +679,7 @@ export default function App() {
         let width = s.orientation === 'portrait' ? 360 : 700;
         let height = s.orientation === 'portrait' ? 725 : 450;
 
-        if (currentView === 'combatStats' || currentView === 'beltStats' || currentView === 'settings') {
+        if (currentView === 'combatStats' || currentView === 'beltStats' || currentView === 'settings' || currentView === 'incomeStats') {
           width = 800;
           height = 825;
         }
@@ -657,7 +690,7 @@ export default function App() {
 
         await invoke('apply_window_settings', {
           alwaysOnTop: s.alwaysOnTop,
-          scale: (currentView === 'combatStats' || currentView === 'beltStats' || currentView === 'settings') ? 1.0 : s.globalScale,
+          scale: (currentView === 'combatStats' || currentView === 'beltStats' || currentView === 'settings' || currentView === 'incomeStats') ? 1.0 : s.globalScale,
           width,
           height
         });
@@ -673,6 +706,10 @@ export default function App() {
       fetchStats(db, statsFilter);
     } else if (db && currentView === 'beltStats') {
       fetchBeltStats(db);
+    } else if (db && currentView === 'incomeStats') {
+      fetchEsiAccounts(db);
+      fetchIncomeStats(db);
+      fetchJournal(true);
     }
   }, [isCollapsed, currentView, statsFilter, dateRangeType, customStartDate, customEndDate]);
 
@@ -1132,6 +1169,129 @@ export default function App() {
     }
   };
 
+  const fetchIncomeStats = async (database: any) => {
+    try {
+      const params: any[] = [];
+      const conditions: string[] = [];
+
+      const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
+      if (dateRange.start) {
+        conditions.push("date(timestamp, 'localtime') >= ?");
+        params.push(dateRange.start);
+      }
+      if (dateRange.end) {
+        conditions.push("date(timestamp, 'localtime') <= ?");
+        params.push(dateRange.end);
+      }
+
+      const whereClause = conditions.length > 0 ? " WHERE " + conditions.join(" AND ") : "";
+
+      // 1. Summary Stats
+      const summaryQuery = `
+        SELECT 
+          SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total,
+          SUM(CASE WHEN date(timestamp, 'localtime') = date('now', 'localtime') AND amount > 0 THEN amount ELSE 0 END) as today,
+          SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty,
+          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess
+        FROM wallet_journal${whereClause}
+      `;
+      const summaryResult = await database.select(summaryQuery, params);
+      const row = (summaryResult as any[])[0];
+
+      // 2. 7-Day Avg (Special query)
+      const avgQuery = `
+        SELECT SUM(amount) / 7 as avg FROM wallet_journal 
+        WHERE date(timestamp, 'localtime') > date('now', 'localtime', '-7 days') AND amount > 0
+      `;
+      const avgResult = await database.select(avgQuery);
+      const avgRow = (avgResult as any[])[0];
+
+      // 3. Daily Stats (Last 30 Days) for Chart
+      const dailyQuery = `
+        SELECT 
+          date(timestamp, 'localtime') as date,
+          SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as amount
+        FROM wallet_journal
+        WHERE timestamp >= date('now', 'localtime', '-30 days')
+        GROUP BY date ORDER BY date ASC
+      `;
+      const dailyResult = await database.select(dailyQuery);
+
+      setIncomeStats({
+        totalIncome: row?.total || 0,
+        todayIncome: row?.today || 0,
+        sevenDayAvg: avgRow?.avg || 0,
+        bountyTotal: row?.bounty || 0,
+        essTotal: row?.ess || 0,
+        dailyIncome: dailyResult as DailyIncomeStat[]
+      });
+
+    } catch (error) {
+      console.error('Failed to fetch income stats:', error);
+    }
+  };
+
+  const fetchJournal = async (reset = false) => {
+    if (!db || (isLoadingJournal && !reset) || (!hasMoreJournal && !reset)) return;
+ 
+    setIsLoadingJournal(true);
+    try {
+      const page = reset ? 0 : journalPage;
+      const limit = 50;
+      const offset = page * limit;
+ 
+      let query = "SELECT * FROM wallet_journal";
+      const params: any[] = [];
+      const conditions: string[] = [];
+ 
+      if (selectedCharacterId) {
+        conditions.push("character_id = ?");
+        params.push(selectedCharacterId);
+      }
+
+      const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
+      if (dateRange.start) {
+        conditions.push("date(timestamp, 'localtime') >= ?");
+        params.push(dateRange.start);
+      }
+      if (dateRange.end) {
+        conditions.push("date(timestamp, 'localtime') <= ?");
+        params.push(dateRange.end);
+      }
+ 
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+ 
+      query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?";
+      params.push(limit, offset);
+ 
+      const result = await db.select(query, params);
+      const newEntries = result as any[];
+ 
+      if (reset) {
+        setWalletJournal(newEntries);
+        setJournalPage(1);
+        setHasMoreJournal(newEntries.length === limit);
+      } else {
+        setWalletJournal(prev => [...prev, ...newEntries]);
+        setJournalPage(page + 1);
+        setHasMoreJournal(newEntries.length === limit);
+      }
+    } catch (error) {
+      console.error('Failed to fetch journal:', error);
+    } finally {
+      setIsLoadingJournal(false);
+    }
+  };
+
+  useEffect(() => {
+    if (db && currentView === 'incomeStats') {
+      fetchJournal(true);
+    }
+  }, [selectedCharacterId, currentView, dateRangeType, customStartDate, customEndDate]);
+
+
   const fetchHistory = async (database: any) => {
     try {
       const result = await database.select(
@@ -1396,6 +1556,111 @@ export default function App() {
     }
   };
 
+  const fetchEsiAccounts = async (database: Database) => {
+    try {
+      const result = await database.select('SELECT * FROM esi_accounts');
+      setEsiAccounts(result as any[]);
+    } catch (error) {
+      console.error('Failed to fetch ESI accounts:', error);
+    }
+  };
+
+  const handleLinkAccount = async () => {
+    try {
+      const clientId = settings.esiClientId || ESI_CLIENT_ID;
+      const res = await invoke('link_eve_character', { clientId }) as any;
+      console.log('Linking response:', res);
+      if (db) {
+        await db.execute(
+          'INSERT OR REPLACE INTO esi_accounts (character_id, character_name, access_token, refresh_token, expires_at) VALUES ($1, $2, $3, $4, $5)',
+          [res.character.character_id, res.character.character_name, res.tokens.access_token, res.tokens.refresh_token, res.tokens.expires_at]
+        );
+        fetchEsiAccounts(db);
+        syncAllWallets(); 
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to link account');
+    }
+  };
+
+  const handleRemoveAccount = async (characterId: number) => {
+    const acc = esiAccounts.find(a => a.character_id === characterId);
+    if (acc) {
+      setCharacterToRemove(acc);
+    }
+  };
+
+  const confirmRemoveCharacter = async () => {
+    if (!db || !characterToRemove) return;
+    try {
+      await db.execute('DELETE FROM esi_accounts WHERE character_id = $1', [characterToRemove.character_id]);
+      fetchEsiAccounts(db);
+      setCharacterToRemove(null);
+      showToast('Account disconnected');
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to remove account');
+    }
+  };
+
+
+  const syncAllWallets = async () => {
+    if (isSyncingWallet) return;
+    
+    const clientIdToUse = ESI_CLIENT_ID;
+    setIsSyncingWallet(true);
+    showToast('Syncing Wallets...');
+
+    try {
+      for (const account of esiAccounts) {
+        // First refresh token
+        try {
+          const tokens = await invoke<any>('refresh_esi_token', { 
+            clientId: clientIdToUse, 
+            refreshToken: account.refresh_token 
+          });
+
+          // Update DB with new tokens
+          await db.execute(
+            'UPDATE esi_accounts SET access_token = $1, refresh_token = $2, expires_at = $3 WHERE character_id = $4',
+            [tokens.access_token, tokens.refresh_token, tokens.expires_at, account.character_id]
+          );
+
+          // Sync journal
+          const entries = await invoke<any[]>('sync_wallet_journal', {
+            characterId: account.character_id,
+            accessToken: tokens.access_token
+          });
+
+          console.log(`Fetched ${entries.length} entries for ${account.character_name}`);
+
+          // Filter and Save unique entries to DB
+          const allowedTypes = ['bounty_prizes', 'ess_escrow_transfer'];
+          for (const entry of entries) {
+            if (allowedTypes.includes(entry.ref_type.toLowerCase())) {
+              await db.execute(
+                'INSERT OR IGNORE INTO wallet_journal (ref_id, character_id, timestamp, amount, ref_type, description) VALUES ($1, $2, $3, $4, $5, $6)',
+                [entry.id, account.character_id, entry.date.replace('T', ' ').replace('Z', ''), entry.amount, entry.ref_type, entry.description]
+              );
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to sync account ${account.character_name}:`, err);
+        }
+      }
+      
+      // Load journal for display
+      fetchJournal(true);
+      showToast('Wallet sync complete');
+    } catch (error) {
+      console.error('Sync failed:', error);
+      showToast('Sync failed');
+    } finally {
+      setIsSyncingWallet(false);
+    }
+  };
+
   const submitSiteLog = async () => {
     if (!db) return;
 
@@ -1498,11 +1763,314 @@ export default function App() {
     return icons;
   };
 
+  const renderIncomeStatsView = () => (
+    <div className="flex-1 flex flex-col pt-[5px] px-6 pb-4 animate-in fade-in duration-500 overflow-hidden">
+      {/* Header Row: Sub-view Toggle & Filters */}
+      <div className="flex items-center justify-between mb-4 mt-1">
+        <div className="flex items-center bg-[#141414]/50 border border-[#f0b419]/10 p-0.5 rounded-lg shadow-lg h-[28px]">
+          <button
+            onClick={() => setStatsSubView('general')}
+            className={`h-full px-3 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${statsSubView === 'general'
+              ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
+              : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
+              }`}
+          >
+            <BarChart2 size={9} className={statsSubView === 'general' ? 'opacity-100' : 'opacity-40'} />
+            <span>General</span>
+          </button>
+          <button
+            onClick={() => setStatsSubView('advanced')}
+            className={`h-full px-3 text-[8.5px] font-black uppercase tracking-wider rounded flex items-center space-x-1.5 transition-all duration-300 ${statsSubView === 'advanced'
+              ? 'bg-[#f0b419]/20 text-[#f0b419] border border-[#f0b419]/30 shadow-[0_0_10px_rgba(240,180,25,0.1)]'
+              : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
+              }`}
+          >
+            <Menu size={9} className={statsSubView === 'advanced' ? 'opacity-100' : 'opacity-40'} />
+            <span>Details</span>
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Date:</span>
+            <select
+              value={dateRangeType}
+              onChange={(e) => setDateRangeType(e.target.value as any)}
+              className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[105px] font-bold py-0 appearance-none"
+            >
+              <option value="All">All Time</option>
+              <option value="Today">Today</option>
+              <option value="Week">Last Week</option>
+              <option value="Month">Last Month</option>
+              <option value="Custom">Custom Range</option>
+            </select>
+          </div>
+
+          {dateRangeType === 'Custom' && (
+            <div className="flex items-center space-x-1 animate-in fade-in slide-in-from-right-1 duration-300">
+              <div className="relative group">
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                />
+                <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                  <span className="truncate">{customStartDate ? formatLocalDate(customStartDate) : 'From...'}</span>
+                  <Calendar size={9} className="opacity-40" />
+                </div>
+              </div>
+              <span className="text-gray-600 text-[8px] font-bold uppercase">to</span>
+              <div className="relative group">
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                />
+                <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                  <span className="truncate">{customEndDate ? formatLocalDate(customEndDate) : 'To...'}</span>
+                  <Calendar size={9} className="opacity-40" />
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="border-l border-white/5 h-4 mx-1"></div>
+
+          <button
+            onClick={syncAllWallets}
+            disabled={isSyncingWallet || esiAccounts.length === 0}
+            className="h-[26px] px-3 bg-[#f0b419]/5 border border-[#f0b419]/30 text-[#f0b419] rounded text-[9px] font-bold uppercase tracking-widest hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all flex items-center space-x-2 disabled:opacity-40"
+          >
+            {isSyncingWallet ? <RefreshCw size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+            <span>{isSyncingWallet ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
+        </div>
+      </div>
+
+    <div className="flex-1 flex flex-col min-h-0">
+
+      {esiAccounts.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 border border-[#f0b419]/20 rounded-xl bg-[#141414]/50 backdrop-blur-sm p-12 mt-4">
+          <div className="w-20 h-20 bg-[#f0b419]/10 rounded-full flex items-center justify-center border border-[#f0b419]/30">
+            <Activity size={40} className="text-[#f0b419]" />
+          </div>
+          <div className="text-center max-w-sm">
+            <h3 className="text-lg font-bold text-white mb-2">No Characters Linked</h3>
+            <p className="text-gray-400 text-xs leading-relaxed">
+              Connect your EVE Online account to automatically track your ISK income from bounty payouts and ESS transfers.
+            </p>
+          </div>
+          <button
+            onClick={handleLinkAccount}
+            className="px-8 py-3 bg-[#f0b419] text-[#0a0a0a] font-black text-xs uppercase tracking-[0.2em] rounded hover:bg-white transition-all shadow-[0_0_20px_rgba(240,180,25,0.2)]"
+          >
+            Connect Account
+          </button>
+        </div>
+      ) : statsSubView === 'general' ? (
+        <div className="flex-1 overflow-y-auto space-y-6 pr-1 mt-2">
+          {/* Top Summary Cards */}
+          <div className="grid grid-cols-2 gap-6">
+            <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group flex flex-col justify-between min-h-[135px]">
+              <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                <BarChart2 size={48} />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Today's Income</div>
+                <div className="text-5xl font-black text-white tracking-tighter flex items-baseline">
+                  {incomeStats ? (incomeStats.todayIncome / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0.0'}
+                  <span className="text-xl ml-2 text-[#f0b419]/60">M</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group min-h-[135px]">
+              <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                <Activity size={48} />
+              </div>
+              <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">7-Day Average</div>
+              <div className="text-5xl font-black text-white tracking-tighter flex items-baseline">
+                {incomeStats ? (incomeStats.sevenDayAvg / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0.0'}
+                <span className="text-xl ml-2 text-[#f0b419]/60">M</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Sources Section */}
+          <section>
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="flex items-baseline space-x-2">
+                <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.3em]">Income Sources</h3>
+                <span className="text-[10px] font-mono text-[#f0b419]/60 uppercase tracking-widest">
+                  | Combined Statistics
+                </span>
+              </div>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/30 to-transparent"></div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <StatCard label="Bounty Payouts" count={incomeStats ? parseFloat((incomeStats.bountyTotal / 1000000).toFixed(2)) : 0} total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} color="gold" highlighted={true} />
+              <StatCard label="ESS Payouts" count={incomeStats ? parseFloat((incomeStats.essTotal / 1000000).toFixed(2)) : 0} total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} color="gold" />
+              <StatCard label="Overall Total" count={incomeStats ? parseFloat((incomeStats.totalIncome / 1000000).toFixed(2)) : 0} total={0} color="gold" />
+            </div>
+          </section>
+
+          {/* Activity Chart */}
+          <section>
+            <div className="flex items-center w-full mb-3">
+              <h3 className="text-[9px] font-bold text-[#00e5ff] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Income Activity (Last 30 Days)</h3>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/50 to-transparent"></div>
+            </div>
+            <div className="bg-[#141414] border border-gray-800/50 rounded-lg pt-4 px-4 pb-[5px]">
+              <div className="h-[123px] relative flex items-end space-x-[2px] px-1 pb-[5px]">
+                {(() => {
+                  const daily = incomeStats?.dailyIncome || [];
+                  const maxAmount = Math.max(...daily.map(d => d.amount), 1);
+                  
+                  // Fill gaps in last 30 days
+                  const chartData = Array.from({ length: 30 }, (_, i) => {
+                    const date = format(subDays(new Date(), 29 - i), 'yyyy-MM-dd');
+                    const found = daily.find(d => d.date === date);
+                    return { date, amount: found?.amount || 0 };
+                  });
+
+                  return chartData.map((d, index) => {
+                    const heightPerc = (d.amount / maxAmount) * 85;
+                    return (
+                      <div key={index} className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-default">
+                        <div className={`absolute -top-[40px] left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[9px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1`}>
+                          <span className="font-bold">{d.date}: </span>
+                          <span>{(d.amount / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}M ISK</span>
+                        </div>
+                        <div 
+                          className={`w-full transition-all duration-300 rounded-t-[1px] relative ${d.amount > 0 ? 'bg-[#f0b419]/10 border border-[#f0b419]/20 group-hover:bg-[#f0b419]/25' : 'bg-gray-800/20'}`}
+                          style={{ height: d.amount > 0 ? `${Math.max(heightPerc, 5)}%` : '2px' }}
+                        ></div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col mt-2 min-h-0">
+          {/* Characters and Journal View */}
+          <div className="flex-1 flex space-x-6 min-h-0">
+            {/* Left side: Characters */}
+            <div className="w-[145px] shrink-0 flex flex-col bg-[#141414]/30 border border-gray-800/40 rounded-xl p-3 overflow-hidden">
+              <h3 className="text-[11px] font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-3 opacity-80 border-b border-[#f0b419]/20 pb-1.5 flex items-center justify-between">
+                <span>Characters</span>
+                <span className="text-[10px] bg-[#f0b419]/10 px-1.5 rounded">{esiAccounts.length}</span>
+              </h3>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {esiAccounts.map(account => {
+                  const isSelected = selectedCharacterId === account.character_id;
+                  return (
+                    <div 
+                      key={account.character_id} 
+                      onClick={() => setSelectedCharacterId(isSelected ? null : account.character_id)}
+                      className={`bg-[#1a1a1a] border ${isSelected ? 'border-[#f0b419]/60 shadow-[0_0_10px_rgba(240,180,25,0.1)]' : 'border-gray-800'} p-3 rounded-lg flex flex-col items-center group cursor-pointer hover:border-gray-700 transition-all relative`}
+                    >
+                      <div className={`w-14 h-14 rounded-lg ${isSelected ? 'bg-[#f0b419]/20 border-[#f0b419]/40' : 'bg-[#f0b419]/5 border-[#f0b419]/20'} border overflow-hidden shrink-0 transition-colors mb-2`}>
+                        <img 
+                          src={`https://images.evetech.net/characters/${account.character_id}/portrait?size=128`} 
+                          alt="" 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 text-center">
+                        <div className={`text-[12px] font-bold ${isSelected ? 'text-[#f0b419]' : 'text-gray-200'} leading-tight transition-colors`}>{account.character_name}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => {
+                  setSettingsActiveTab('characters');
+                  setCurrentView('settings');
+                }}
+                className="mt-3 py-1.5 border border-[#f0b419]/30 bg-[#f0b419]/5 text-[#f0b419] text-[9px] uppercase font-bold tracking-widest rounded hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all leading-tight"
+              >
+                Manage<br />Characters
+              </button>
+            </div>
+
+            {/* Right side: Journal */}
+            <div className="flex-1 flex flex-col bg-[#141414]/30 border border-gray-800/40 rounded-xl p-3 overflow-hidden min-w-0 relative">
+              <h3 className="text-[11px] font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-4 opacity-80 border-b border-[#f0b419]/20 pb-1.5">Recent Journal Transactions</h3>
+              <div 
+                id="journal-scroll-container"
+                className="flex-1 overflow-y-auto space-y-2 pr-1"
+                onScroll={(e) => {
+                  const target = e.currentTarget;
+                  const reachingBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+                  if (reachingBottom && !isLoadingJournal && hasMoreJournal) {
+                    fetchJournal();
+                  }
+                  setJournalShowScrollTop(target.scrollTop > 300);
+                }}
+              >
+                {(() => {
+                  const filteredJournal = walletJournal;
+
+                  if (filteredJournal.length === 0) {
+                    return <div className="h-full flex items-center justify-center text-gray-600 text-[12px] italic">No transaction history found for this selection.</div>;
+                  }
+
+                  return filteredJournal.map((entry) => (
+                    <div key={entry.ref_id} className="bg-[#1a1a1a] border border-gray-800/50 p-2.5 rounded-lg flex items-center justify-between text-xs hover:border-gray-700 transition-colors animate-in fade-in slide-in-from-bottom-1 duration-300">
+                      <div className="flex-1 flex items-center space-x-4 min-w-0">
+                        <div className="flex flex-col items-center font-mono whitespace-nowrap min-w-[55px]">
+                          <div className="text-[11px] font-bold text-gray-400">{format(new Date(entry.timestamp + 'Z'), 'HH:mm:ss')}</div>
+                          <div className="text-[11px] font-bold text-gray-400 uppercase">{format(new Date(entry.timestamp + 'Z'), 'MMM dd')}</div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-gray-200 font-medium truncate text-[13px]">{entry.description || entry.ref_type}</div>
+                          <div className="text-[10px] text-gray-500 uppercase tracking-tighter">{entry.ref_type.replace(/_/g, ' ')}</div>
+                        </div>
+                      </div>
+                      <div className={`font-bold ml-4 text-[13px] ${entry.amount > 0 ? 'text-[#00ff7f]' : 'text-red-500/70'}`}>
+                        {entry.amount > 0 ? '+' : ''}{Math.round(entry.amount).toLocaleString()}
+                      </div>
+                    </div>
+                  ));
+                })()}
+                {isLoadingJournal && (
+                  <div className="py-4 flex justify-center">
+                    <RefreshCw size={16} className="text-[#00ff7f] animate-spin opacity-50" />
+                  </div>
+                )}
+              </div>
+ 
+              {/* Floating Scroll Top Button */}
+              {journalShowScrollTop && (
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('journal-scroll-container');
+                    if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="absolute bottom-4 right-4 p-2 bg-[#f0b419]/10 border border-[#f0b419]/40 text-[#f0b419] rounded-full hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all duration-300 shadow-[0_0_15px_rgba(240,180,25,0.2)] animate-in fade-in zoom-in slide-in-from-bottom-2"
+                  title="Scroll to Top"
+                >
+                  <ChevronUp size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+    </div>
+  );
+
   const isLandscape = settings.orientation === 'landscape';
   const isCombatStats = currentView === 'combatStats';
   const isBeltStats = currentView === 'beltStats';
+  const isIncomeStats = currentView === 'incomeStats';
   const isSettings = currentView === 'settings';
-  const isExpandedView = isCombatStats || isBeltStats || isSettings;
+  const isExpandedView = isCombatStats || isBeltStats || isSettings || isIncomeStats;
   const appWidth = isExpandedView ? 800 : (isLandscape ? 700 : 360);
   const appHeight = isCollapsed ? 28 : (isExpandedView ? 825 : (isLandscape ? 450 : 725));
 
@@ -1548,9 +2116,18 @@ export default function App() {
               >
                 Belt Stats
               </button>
+              <button
+                onClick={() => setCurrentView('incomeStats')}
+                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'incomeStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Income Stats
+              </button>
             </div>
             <button
-              onClick={() => setCurrentView('settings')}
+              onClick={() => {
+                setSettingsActiveTab('window');
+                setCurrentView('settings');
+              }}
               className={`transition-colors p-1 ${currentView === 'settings' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-[#f0b419]'}`}
               title="Settings"
             >
@@ -1558,7 +2135,7 @@ export default function App() {
             </button>
           </header>
 
-          <div className="flex-1 flex flex-col p-4 overflow-hidden relative">
+          <div className={`flex-1 flex flex-col ${isExpandedView ? 'p-0' : 'p-4'} overflow-hidden relative`}>
             {currentView === 'combat' && (
               <div className={`flex-1 flex ${isLandscape ? 'flex-row space-x-6' : 'flex-col'} overflow-hidden`}>
                 <div className={isLandscape ? 'w-1/2 flex flex-col' : ''}>
@@ -2008,6 +2585,7 @@ export default function App() {
                 </div>
               </div>
             )}
+            {currentView === 'incomeStats' && renderIncomeStatsView()}
             {currentView === 'combatStats' && stats && (
               <div className="flex-1 overflow-y-auto pt-[5px] px-6 pb-2 space-y-6 animate-in fade-in duration-500">
                 {/* Header Row: Sub-view Toggle & Filters */}
@@ -2998,13 +3576,20 @@ export default function App() {
             {currentView === 'settings' && (
               <Settings
                 settings={settings}
-                onSettingsChange={saveSettings}
+                onSettingsChange={setSettings}
                 showToast={showToast}
                 appVersion={appVersion}
                 updateInfo={updateInfo}
                 updateError={updateError}
                 onOpenUrl={handleOpenUrl}
                 onCheckUpdates={checkForUpdates}
+                esiAccounts={esiAccounts}
+                onLinkAccount={handleLinkAccount}
+                onRemoveAccount={handleRemoveAccount}
+                onSyncWallets={syncAllWallets}
+                isSyncingWallet={isSyncingWallet}
+                activeTab={settingsActiveTab}
+                onActiveTabChange={setSettingsActiveTab}
               />
             )}
 
@@ -3016,28 +3601,33 @@ export default function App() {
           </div>
 
           {/* Confirmation Modal */}
-          {(logToDelete !== null || beltLogToDelete !== null) && (
+          {(logToDelete !== null || beltLogToDelete !== null || characterToRemove !== null) && (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
               <div className="bg-[#141414] border border-[#f0b419]/50 rounded-lg p-5 w-full max-w-[300px] shadow-2xl">
-                <h3 className="text-[#f0b419] font-bold text-lg mb-2">Delete Log?</h3>
+                <h3 className="text-[#f0b419] font-bold text-lg mb-2">
+                  {characterToRemove ? 'Disconnect Account?' : 'Delete Log?'}
+                </h3>
                 <p className="text-gray-400 text-sm mb-6">
-                  Are you sure you want to delete this entry? This action cannot be undone.
+                  {characterToRemove 
+                    ? `Are you sure you want to disconnect ${characterToRemove.character_name}? Wallet journal data will remain but no new syncs will occur.`
+                    : 'Are you sure you want to delete this entry? This action cannot be undone.'}
                 </p>
                 <div className="flex justify-end space-x-3">
                   <button
                     onClick={() => {
                       setLogToDelete(null);
                       setBeltLogToDelete(null);
+                      setCharacterToRemove(null);
                     }}
                     className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={confirmDelete}
+                    onClick={characterToRemove ? confirmRemoveCharacter : confirmDelete}
                     className="px-4 py-2 text-sm bg-red-900/50 text-red-200 border border-red-500/50 rounded hover:bg-red-900 hover:text-white transition-colors"
                   >
-                    Delete
+                    {characterToRemove ? 'Disconnect' : 'Delete'}
                   </button>
                 </div>
               </div>

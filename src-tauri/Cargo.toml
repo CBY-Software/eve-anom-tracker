@@ -21,6 +21,13 @@ tauri-plugin-fs = "2.4.5"
 tauri-plugin-dialog = "2.6.0"
 tauri-plugin-global-shortcut = "2.0.0"
 zip = "2.2.2"
+reqwest = { version = "0.12", features = ["json"] }
+tiny_http = "0.12"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+urlencoding = "2.1"
+rand = "0.8"
+webbrowser = "1.0"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58.0", features = ["Win32_Graphics_Dwm", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

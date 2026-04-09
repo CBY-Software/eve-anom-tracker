@@ -23,5 +23,8 @@ export default defineConfig(({mode}) => {
     },
     clearScreen: false,
     envPrefix: ['VITE_', 'TAURI_ENV_'],
+    build: {
+      chunkSizeWarningLimit: 2000,
+    },
   };
 });

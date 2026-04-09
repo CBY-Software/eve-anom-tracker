@@ -7,6 +7,8 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
+mod esi;
+
 fn get_migrations() -> Vec<Migration> {
     vec![
         Migration {
@@ -57,6 +59,30 @@ fn get_migrations() -> Vec<Migration> {
                 location_system TEXT,
                 location_region TEXT,
                 location_security TEXT
+            );
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "create_esi_tables",
+            sql: "
+            CREATE TABLE IF NOT EXISTS esi_accounts (
+                character_id INTEGER PRIMARY KEY,
+                character_name TEXT NOT NULL,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT NOT NULL,
+                expires_at DATETIME NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS wallet_journal (
+                ref_id INTEGER PRIMARY KEY,
+                character_id INTEGER NOT NULL,
+                timestamp DATETIME NOT NULL,
+                amount REAL NOT NULL,
+                ref_type TEXT NOT NULL,
+                description TEXT,
+                FOREIGN KEY(character_id) REFERENCES esi_accounts(character_id) ON DELETE CASCADE
             );
             ",
             kind: MigrationKind::Up,
@@ -362,7 +388,11 @@ pub fn run() {
             apply_window_settings, 
             load_settings, 
             save_settings,
-            get_system_date_format
+            get_system_date_format,
+            esi::link_eve_character,
+            esi::get_character_public_info,
+            esi::refresh_esi_token,
+            esi::sync_wallet_journal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
