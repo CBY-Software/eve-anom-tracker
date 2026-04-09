@@ -66,7 +66,11 @@ interface IncomeStatsData {
   todayIncome: number;
   sevenDayAvg: number;
   bountyTotal: number;
+  bountyCount: number;
+  bountyMax: number;
   essTotal: number;
+  essCount: number;
+  essMax: number;
   dailyIncome: DailyIncomeStat[];
 }
 
@@ -102,8 +106,8 @@ interface WeeklyStat {
 
 
 
-const StatCard = ({ label, count, total, color, highlighted = false, className = "" }: { label: string, count: number, total: number, color: 'green' | 'blue' | 'purple' | 'gold', highlighted?: boolean, className?: string }) => {
-  const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : null;
+const StatCard = ({ label, count, total, color, highlighted = false, className = "", suffix }: { label: string, count: number | string, total: number, color: 'green' | 'blue' | 'purple' | 'gold', highlighted?: boolean, className?: string, suffix?: string }) => {
+  const percentage = (typeof count === 'number' && total > 0) ? ((count / total) * 100).toFixed(1) : null;
   const colorClass = color === 'green' ? 'text-[#00ff7f]' : color === 'purple' ? 'text-[#bf94ff]' : color === 'gold' ? 'text-[#f0b419]' : 'text-[#00e5ff]';
   const borderColor = highlighted
     ? (color === 'green' ? 'border-[#00ff7f]/60' : color === 'purple' ? 'border-[#bf94ff]/60' : color === 'gold' ? 'border-[#f0b419]/60' : 'border-[#00e5ff]/60')
@@ -123,12 +127,17 @@ const StatCard = ({ label, count, total, color, highlighted = false, className =
       </div>
       <div className="flex items-baseline justify-between">
         <div className={`${highlighted ? 'text-3xl' : 'text-2xl'} font-bold ${colorClass}`}>
-          {count.toLocaleString()}
-          {color === 'gold' && <span className="text-xs ml-1 opacity-60">M</span>}
+          {typeof count === 'number' ? count.toLocaleString() : count}
+          {color === 'gold' && typeof count === 'number' && <span className="text-xs ml-1 opacity-60">M</span>}
         </div>
         {percentage !== null && (
           <div className={`text-xs font-mono ${highlighted ? 'text-gray-400' : 'text-gray-500'}`}>
             {percentage}%
+          </div>
+        )}
+        {suffix && (
+          <div className={`text-xs font-mono ${highlighted ? 'text-gray-400' : 'text-gray-500'} uppercase text-right`}>
+            {suffix}
           </div>
         )}
       </div>
@@ -711,7 +720,7 @@ export default function App() {
       fetchIncomeStats(db);
       fetchJournal(true);
     }
-  }, [isCollapsed, currentView, statsFilter, dateRangeType, customStartDate, customEndDate]);
+  }, [isCollapsed, currentView, statsFilter, dateRangeType, customStartDate, customEndDate, selectedCharacterId]);
 
   useEffect(() => {
     if (!isSettingsLoaded) return;
@@ -1184,6 +1193,11 @@ export default function App() {
         params.push(dateRange.end);
       }
 
+      if (selectedCharacterId) {
+        conditions.push("character_id = ?");
+        params.push(selectedCharacterId);
+      }
+
       const whereClause = conditions.length > 0 ? " WHERE " + conditions.join(" AND ") : "";
 
       // 1. Summary Stats
@@ -1192,7 +1206,11 @@ export default function App() {
           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total,
           SUM(CASE WHEN date(timestamp, 'localtime') = date('now', 'localtime') AND amount > 0 THEN amount ELSE 0 END) as today,
           SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty,
-          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess
+          COUNT(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN 1 END) as bounty_count,
+          MAX(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty_max,
+          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess,
+          COUNT(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN 1 END) as ess_count,
+          MAX(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess_max
         FROM wallet_journal${whereClause}
       `;
       const summaryResult = await database.select(summaryQuery, params);
@@ -1222,7 +1240,11 @@ export default function App() {
         todayIncome: row?.today || 0,
         sevenDayAvg: avgRow?.avg || 0,
         bountyTotal: row?.bounty || 0,
+        bountyCount: row?.bounty_count || 0,
+        bountyMax: row?.bounty_max || 0,
         essTotal: row?.ess || 0,
+        essCount: row?.ess_count || 0,
+        essMax: row?.ess_max || 0,
         dailyIncome: dailyResult as DailyIncomeStat[]
       });
 
@@ -1791,6 +1813,22 @@ export default function App() {
         </div>
 
         <div className="flex items-center space-x-4">
+          {statsSubView === 'general' && (
+            <div className="flex items-center space-x-2">
+              <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Character:</span>
+              <select
+                value={selectedCharacterId || ''}
+                onChange={(e) => setSelectedCharacterId(e.target.value ? parseInt(e.target.value) : null)}
+                className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[120px] font-bold py-0 appearance-none"
+              >
+                <option value="">All Characters</option>
+                {esiAccounts.map(acc => (
+                  <option key={acc.character_id} value={acc.character_id}>{acc.character_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="flex items-center space-x-2">
             <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Date:</span>
             <select
@@ -1877,9 +1915,9 @@ export default function App() {
                 <BarChart2 size={48} />
               </div>
               <div>
-                <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Today's Income</div>
+                <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Total Income</div>
                 <div className="text-5xl font-black text-white tracking-tighter flex items-baseline">
-                  {incomeStats ? (incomeStats.todayIncome / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0.0'}
+                  {incomeStats ? (incomeStats.totalIncome / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0.0'}
                   <span className="text-xl ml-2 text-[#f0b419]/60">M</span>
                 </div>
               </div>
@@ -1888,10 +1926,9 @@ export default function App() {
               <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Activity size={48} />
               </div>
-              <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">7-Day Average</div>
+              <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Est. Profit / Hour</div>
               <div className="text-5xl font-black text-white tracking-tighter flex items-baseline">
-                {incomeStats ? (incomeStats.sevenDayAvg / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0.0'}
-                <span className="text-xl ml-2 text-[#f0b419]/60">M</span>
+                TBD
               </div>
             </div>
           </div>
@@ -1902,15 +1939,56 @@ export default function App() {
               <div className="flex items-baseline space-x-2">
                 <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.3em]">Income Sources</h3>
                 <span className="text-[10px] font-mono text-[#f0b419]/60 uppercase tracking-widest">
-                  | Combined Statistics
+                  | Breakdown
                 </span>
               </div>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/30 to-transparent"></div>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <StatCard label="Bounty Payouts" count={incomeStats ? parseFloat((incomeStats.bountyTotal / 1000000).toFixed(2)) : 0} total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} color="gold" highlighted={true} />
+              <StatCard label="Bounty Payouts" count={incomeStats ? parseFloat((incomeStats.bountyTotal / 1000000).toFixed(2)) : 0} total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} color="gold" />
               <StatCard label="ESS Payouts" count={incomeStats ? parseFloat((incomeStats.essTotal / 1000000).toFixed(2)) : 0} total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} color="gold" />
-              <StatCard label="Overall Total" count={incomeStats ? parseFloat((incomeStats.totalIncome / 1000000).toFixed(2)) : 0} total={0} color="gold" />
+              <StatCard label="Additional Income" count={0} total={0} color="gold" />
+            </div>
+          </section>
+
+          {/* Efficiency Section */}
+          <section>
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="flex items-baseline space-x-2">
+                <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.3em]">Efficiency</h3>
+                <span className="text-[10px] font-mono text-[#f0b419]/60 uppercase tracking-widest">
+                  | Averages
+                </span>
+              </div>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/30 to-transparent"></div>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <StatCard 
+                label="Average Bounty Tick" 
+                count={incomeStats && incomeStats.bountyCount > 0 ? parseFloat((incomeStats.bountyTotal / incomeStats.bountyCount / 1000000).toFixed(2)) : 0} 
+                total={0} 
+                color="gold" 
+                suffix={`from ${incomeStats?.bountyCount || 0} ticks`}
+              />
+              <StatCard 
+                label="Biggest Bounty Tick" 
+                count={incomeStats ? parseFloat((incomeStats.bountyMax / 1000000).toFixed(2)) : 0} 
+                total={0} 
+                color="gold" 
+              />
+              <StatCard 
+                label="Average ESS Payout" 
+                count={incomeStats && incomeStats.essCount > 0 ? parseFloat((incomeStats.essTotal / incomeStats.essCount / 1000000).toFixed(2)) : 0} 
+                total={0} 
+                color="gold" 
+                suffix={`from ${incomeStats?.essCount || 0} payouts`}
+              />
+              <StatCard 
+                label="Biggest ESS Payout" 
+                count={incomeStats ? parseFloat((incomeStats.essMax / 1000000).toFixed(2)) : 0} 
+                total={0} 
+                color="gold" 
+              />
             </div>
           </section>
 
