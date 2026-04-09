@@ -344,6 +344,50 @@ export default function Settings({
                 <p className="text-[10px] text-gray-600 italic px-1">
                   * This setting affects how logs are filtered, grouped in statistics, and displayed throughout the application.
                 </p>
+
+                <div className="space-y-2 pt-6 border-t border-gray-800">
+                  <label className="text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Global Log Hotkey
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      value={settings.logShortcut}
+                      onKeyDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const isModifierOnly = ['Control', 'Alt', 'Shift', 'Meta'].includes(e.key);
+                        if (isModifierOnly) return;
+
+                        const parts: string[] = [];
+                        if (e.ctrlKey || e.metaKey) parts.push('CommandOrControl');
+                        if (e.altKey) parts.push('Alt');
+                        if (e.shiftKey) parts.push('Shift');
+
+                        let key = e.key.toUpperCase();
+                        if (key === ' ') key = 'Space';
+                        if (key === 'ARROWUP') key = 'Up';
+                        if (key === 'ARROWDOWN') key = 'Down';
+                        if (key === 'ARROWLEFT') key = 'Left';
+                        if (key === 'ARROWRIGHT') key = 'Right';
+
+                        if (key && !isModifierOnly) {
+                          parts.push(key);
+                          const combined = parts.join('+');
+                          handleChange('logShortcut', combined);
+                          showToast(`Hotkey set: ${combined}`);
+                        }
+                      }}
+                      className="w-full bg-[#141414] border border-[#f0b419]/50 text-white p-2 rounded text-xs px-8 focus:outline-none focus:border-[#f0b419] focus:ring-1 focus:ring-[#f0b419] cursor-pointer"
+                      placeholder="Press key combination..."
+                    />
+                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                      <Activity size={12} className="text-[#f0b419]/50" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -444,49 +488,6 @@ export default function Settings({
                 </div>
               </label>
 
-              <div className="space-y-2 pt-2 border-t border-gray-800">
-                <label className="text-xs font-medium text-gray-300 uppercase tracking-wider">
-                  Global Log Hotkey
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    readOnly
-                    value={settings.logShortcut}
-                    onKeyDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-
-                      const isModifierOnly = ['Control', 'Alt', 'Shift', 'Meta'].includes(e.key);
-                      if (isModifierOnly) return;
-
-                      const parts: string[] = [];
-                      if (e.ctrlKey || e.metaKey) parts.push('CommandOrControl');
-                      if (e.altKey) parts.push('Alt');
-                      if (e.shiftKey) parts.push('Shift');
-
-                      let key = e.key.toUpperCase();
-                      if (key === ' ') key = 'Space';
-                      if (key === 'ARROWUP') key = 'Up';
-                      if (key === 'ARROWDOWN') key = 'Down';
-                      if (key === 'ARROWLEFT') key = 'Left';
-                      if (key === 'ARROWRIGHT') key = 'Right';
-
-                      if (key && !isModifierOnly) {
-                        parts.push(key);
-                        const combined = parts.join('+');
-                        handleChange('logShortcut', combined);
-                        showToast(`Hotkey set: ${combined}`);
-                      }
-                    }}
-                    className="w-full bg-[#141414] border border-[#f0b419]/50 text-white p-2 rounded text-xs px-8 focus:outline-none focus:border-[#f0b419] focus:ring-1 focus:ring-[#f0b419] cursor-pointer"
-                    placeholder="Press key combination..."
-                  />
-                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-                    <Activity size={12} className="text-[#f0b419]/50" />
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )}
