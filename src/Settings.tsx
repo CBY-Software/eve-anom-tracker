@@ -26,6 +26,10 @@ export interface AppSettings {
   preferredSystems: string[];
   logShortcut: string;
   timeDisplay: 'eve' | 'local';
+  janiceMarket: number;
+  janicePriceType: 'sell' | 'buy' | 'split';
+  janicePricingVariant: 'immediate' | 'top5percent';
+  janicePercentage: number;
 }
 
 interface SettingsProps {

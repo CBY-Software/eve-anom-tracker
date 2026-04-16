@@ -2,20 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.5] - 2026-04-07
+## [0.4.5] - 2026-04-17
 
-### Belt Statistics
-- Added a dedicated **Belt Statistics** dashboard with detailed tracking of Faction Subcapitals, Hauler NPCs, and Officer spawns.
-- Implemented **Hourly & Weekly Activity** charts for belt tracking with trend-line mapping and special outcome percentages.
-- Added a comprehensive **Belt History** modal with run-time duration tracking and infinite scrolling support.
+### Janice API & Loot Appraisal
+- Added automated loot appraisal integration with **janice.e-351.com**.
 
-### Added
-- Added **Hourly & Daily Analysis** for **Combat Statistics** charts featuring a layered HUD aesthetic with site count bars and success rate trend lines for better performance tracking.
+### Income & Statistics
+- Added manual income logging and journal filtering (All | API | Manual).
+- Fixed EVE (UTC) date synchronization for manual income records.
+- Added a dedicated **Belt Statistics** dashboard and history view.
+- Added hourly and daily analysis charts for Combat and Belt statistics.
 
-### Application Updates
-- Added a "Close Application" button to update notifications to help users exit the app before running a new installer.
-- Redesigned the update check UI in Settings with a more visible button and status text.
-- Added an "Exit App to Update" button to the Settings page for easier installation of downloaded releases.
+### Application
+- Added update notifications and manual update check functionality.
+- Enhanced update check UI in settings with simplified "Exit App to Update" options.
+
 
 ## [0.4.4] - 2026-04-03
 ### Added

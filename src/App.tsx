@@ -59,6 +59,9 @@ interface BeltStatsData {
 interface DailyIncomeStat {
   date: string;
   amount: number;
+  bounty: number;
+  ess: number;
+  additional: number;
 }
 
 interface IncomeStatsData {
@@ -68,9 +71,12 @@ interface IncomeStatsData {
   bountyTotal: number;
   bountyCount: number;
   bountyMax: number;
+  bountyMin: number;
   essTotal: number;
   essCount: number;
   essMax: number;
+  essMin: number;
+  additional: number;
   dailyIncome: DailyIncomeStat[];
 }
 
@@ -106,7 +112,7 @@ interface WeeklyStat {
 
 
 
-const StatCard = ({ label, count, total, color, highlighted = false, className = "", suffix }: { label: string, count: number | string, total: number, color: 'green' | 'blue' | 'purple' | 'gold', highlighted?: boolean, className?: string, suffix?: string }) => {
+const StatCard = ({ label, count, total, color, highlighted = false, className = "", suffix, actions }: { label: string, count: number | string, total: number, color: 'green' | 'blue' | 'purple' | 'gold', highlighted?: boolean, className?: string, suffix?: string, actions?: React.ReactNode }) => {
   const percentage = (typeof count === 'number' && total > 0) ? ((count / total) * 100).toFixed(1) : null;
   const colorClass = color === 'green' ? 'text-[#00ff7f]' : color === 'purple' ? 'text-[#bf94ff]' : color === 'gold' ? 'text-[#f0b419]' : 'text-[#00e5ff]';
   const borderColor = highlighted
@@ -121,7 +127,7 @@ const StatCard = ({ label, count, total, color, highlighted = false, className =
     : '';
 
   return (
-    <div className={`${bgClass} border ${borderColor} p-4 rounded-lg transition-all duration-200 ${bgHover} ${shadowClass} ${className} group flex flex-col justify-center`}>
+    <div className={`${bgClass} border ${borderColor} p-4 rounded-lg transition-all duration-200 ${bgHover} ${shadowClass} ${className} group flex flex-col justify-center relative`}>
       <div className={`text-[10px] font-bold ${highlighted ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-widest mb-1 group-hover:text-gray-400 transition-colors`}>
         {label}
       </div>
@@ -141,6 +147,11 @@ const StatCard = ({ label, count, total, color, highlighted = false, className =
           </div>
         )}
       </div>
+      {actions && (
+        <div className="absolute top-2 right-2 flex space-x-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {actions}
+        </div>
+      )}
     </div>
   );
 };
@@ -164,6 +175,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   preferredSystems: [],
   logShortcut: 'CommandOrControl+Shift+L',
   timeDisplay: 'eve',
+  janiceMarket: 2,
+  janicePriceType: 'sell',
+  janicePricingVariant: 'immediate',
+  janicePercentage: 100,
 };
 
 // Bootstrap key layout settings synchronously from localStorage to avoid
@@ -329,7 +344,41 @@ export default function App() {
   const [hasMoreJournal, setHasMoreJournal] = useState(true);
   const [isLoadingJournal, setIsLoadingJournal] = useState(false);
   const [journalShowScrollTop, setJournalShowScrollTop] = useState(false);
+  const [isAddIncomeModalOpen, setIsAddIncomeModalOpen] = useState(false);
+  const [addIncomeErrors, setAddIncomeErrors] = useState<{ type?: string, amount?: string }>({});
+  const [journalFilter, setJournalFilter] = useState<'all' | 'manual' | 'api'>('all');
+  const [journalEntryToDelete, setJournalEntryToDelete] = useState<number | null>(null);
+  const [addIncomeForm, setAddIncomeForm] = useState({
+    date: format(new Date(), 'yyyy-MM-dd'),
+    characterId: 0,
+    type: '',
+    amount: '',
+    lootText: ''
+  });
+  const [isAppraising, setIsAppraising] = useState(false);
+  const [appraisalResult, setAppraisalResult] = useState<any>(null);
+  const [modalStep, setModalStep] = useState<'input' | 'confirm'>('input');
   const [settingsActiveTab, setSettingsActiveTab] = useState<'application' | 'window' | 'locations' | 'characters' | 'backup' | 'about'>('window');
+
+  useEffect(() => {
+    if (isAddIncomeModalOpen) {
+      const rawNow = new Date();
+      const now = settings.timeDisplay === 'eve' 
+        ? new Date(rawNow.getTime() + rawNow.getTimezoneOffset() * 60000)
+        : rawNow;
+      
+      setAddIncomeForm({
+        characterId: 0,
+        date: format(now, 'yyyy-MM-dd'),
+        type: '',
+        amount: '',
+        lootText: ''
+      });
+      setAddIncomeErrors({});
+      setModalStep('input');
+      setAppraisalResult(null);
+    }
+  }, [isAddIncomeModalOpen, settings.timeDisplay]);
 
   const showToast = (message: string, duration = 3000) => {
     setToastMessage(message);
@@ -1231,9 +1280,12 @@ export default function App() {
           SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty,
           COUNT(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN 1 END) as bounty_count,
           MAX(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty_max,
+          MIN(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount END) as bounty_min,
           SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess,
           COUNT(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN 1 END) as ess_count,
-          MAX(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess_max
+          MAX(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess_max,
+          MIN(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount END) as ess_min,
+          SUM(CASE WHEN LOWER(ref_type) NOT IN ('bounty_prizes', 'ess_escrow_transfer') AND amount > 0 THEN amount ELSE 0 END) as additional
         FROM wallet_journal${whereClause}
       `;
       const summaryResult = await database.select(summaryQuery, params);
@@ -1251,7 +1303,10 @@ export default function App() {
       const dailyQuery = `
         SELECT 
           date(timestamp${tm}) as date,
-          SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as amount
+          SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as amount,
+          SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty,
+          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess,
+          SUM(CASE WHEN LOWER(ref_type) NOT IN ('bounty_prizes', 'ess_escrow_transfer') AND amount > 0 THEN amount ELSE 0 END) as additional
         FROM wallet_journal
         WHERE timestamp >= date('now'${tm}, '-30 days')
         GROUP BY date ORDER BY date ASC
@@ -1265,9 +1320,12 @@ export default function App() {
         bountyTotal: row?.bounty || 0,
         bountyCount: row?.bounty_count || 0,
         bountyMax: row?.bounty_max || 0,
+        bountyMin: row?.bounty_min || 0,
         essTotal: row?.ess || 0,
         essCount: row?.ess_count || 0,
         essMax: row?.ess_max || 0,
+        essMin: row?.ess_min || 0,
+        additional: row?.additional || 0,
         dailyIncome: dailyResult as DailyIncomeStat[]
       });
 
@@ -1292,6 +1350,12 @@ export default function App() {
       if (selectedCharacterId) {
         conditions.push("character_id = ?");
         params.push(selectedCharacterId);
+      }
+
+      if (journalFilter === 'manual') {
+        conditions.push("ref_type = 'manual_entry'");
+      } else if (journalFilter === 'api') {
+        conditions.push("ref_type != 'manual_entry'");
       }
 
       const dateRange = getDateRange(dateRangeType, customStartDate, customEndDate);
@@ -1330,11 +1394,13 @@ export default function App() {
     }
   };
 
+
+
   useEffect(() => {
     if (db && currentView === 'incomeStats') {
       fetchJournal(true);
     }
-  }, [selectedCharacterId, currentView, dateRangeType, customStartDate, customEndDate]);
+  }, [db, currentView, selectedCharacterId, dateRangeType, customStartDate, customEndDate, journalFilter]);
 
 
   const fetchHistory = async (database: any) => {
@@ -1649,6 +1715,110 @@ export default function App() {
     }
   };
 
+  const handleAddIncome = async (overrideAmount?: number) => {
+    if (!db) return;
+    
+    const newErrors: { type?: string, amount?: string } = {};
+    const cleanAmount = parseFloat(addIncomeForm.amount.replace(/\./g, ''));
+
+    if (!addIncomeForm.type) {
+      newErrors.type = 'Category is required';
+    }
+
+    if (addIncomeForm.type === 'Sold Escalations') {
+      if (!addIncomeForm.amount || isNaN(cleanAmount) || cleanAmount <= 0) {
+        newErrors.amount = 'Valid amount is required';
+      }
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setAddIncomeErrors(newErrors);
+      return;
+    }
+
+    try {
+      const timestamp = `${addIncomeForm.date} 23:59:59`;
+      // Use cleanAmount if type is Sold Escalations, otherwise use the passed overrideAmount (from appraisal) or 0
+      const finalAmount = overrideAmount !== undefined 
+        ? overrideAmount 
+        : (addIncomeForm.type === 'Sold Escalations' ? cleanAmount : 0);
+      await db.execute(
+        `INSERT INTO wallet_journal (character_id, timestamp, amount, ref_type, description) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [addIncomeForm.characterId === 0 ? null : addIncomeForm.characterId, timestamp, finalAmount, 'manual_entry', addIncomeForm.type]
+      );
+      
+      setIsAddIncomeModalOpen(false);
+      setModalStep('input');
+      setAppraisalResult(null);
+      showToast('Income added successfully');
+      fetchIncomeStats(db);
+      fetchJournal(true);
+    } catch (error) {
+      console.error('Failed to add income:', error);
+      showToast('Failed to add income');
+    }
+  };
+
+  const JANICE_API_KEY = "2kDrayGFYyBqHeZnRfkeF8QGEsejW7Rn";
+
+  const handleAppraiseLoot = async () => {
+    if (!addIncomeForm.lootText.trim()) {
+      setAddIncomeErrors({ ...addIncomeErrors, amount: 'Loot text is required' });
+      return;
+    }
+    
+    setIsAppraising(true);
+    try {
+      // Use the Rust command to bypass CORS issues in the native environment
+      const data = await invoke<any>('janice_appraise', {
+        lootText: addIncomeForm.lootText,
+        marketId: settings.janiceMarket,
+        apiKey: JANICE_API_KEY
+      });
+      
+      // Correctly check v2 appraisal response structure 
+      if (data && (data.immediatePrices || data.top5AveragePrices || data.effectivePrices)) {
+        setAppraisalResult(data);
+        setModalStep('confirm');
+      } else {
+        showToast('Janice could not value this loot (check format)');
+      }
+    } catch (error) {
+      console.error('Janice API Error:', error);
+      showToast(`${error}`);
+    } finally {
+      setIsAppraising(false);
+    }
+  };
+
+  const JANICE_MARKETS = [
+    { id: 2, name: 'Jita' },
+    { id: 5, name: 'Amarr' },
+    { id: 13, name: 'Dodixie' },
+    { id: 19, name: 'Hek' },
+    { id: 24, name: 'Rens' }
+  ];
+
+  const handleDeleteJournalEntry = async () => {
+    if (!db || journalEntryToDelete === null) return;
+    try {
+      await db.execute('DELETE FROM wallet_journal WHERE ref_id = $1', [journalEntryToDelete]);
+      setJournalEntryToDelete(null);
+      showToast('Entry deleted');
+      fetchJournal(true);
+      fetchIncomeStats(db);
+    } catch (error) {
+      console.error('Failed to delete journal entry:', error);
+      showToast('Failed to delete entry');
+    }
+  };
+
+  const formatISKInput = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  };
 
   const syncAllWallets = async () => {
     if (isSyncingWallet) return;
@@ -1949,7 +2119,7 @@ export default function App() {
               <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Activity size={48} />
               </div>
-              <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Est. Profit / Hour</div>
+              <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Est. Income / Hour</div>
               <div className="text-5xl font-black text-white tracking-tighter flex items-baseline">
                 TBD
               </div>
@@ -1962,15 +2132,39 @@ export default function App() {
               <div className="flex items-baseline space-x-2">
                 <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.3em]">Income Sources</h3>
                 <span className="text-[10px] font-mono text-[#f0b419]/60 uppercase tracking-widest">
-                  | Breakdown
+                  | Totals
                 </span>
               </div>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/30 to-transparent"></div>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <StatCard label="Bounty Payouts" count={incomeStats ? parseFloat((incomeStats.bountyTotal / 1000000).toFixed(2)) : 0} total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} color="gold" />
-              <StatCard label="ESS Payouts" count={incomeStats ? parseFloat((incomeStats.essTotal / 1000000).toFixed(2)) : 0} total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} color="gold" />
-              <StatCard label="Additional Income" count={0} total={0} color="gold" />
+              <StatCard 
+                label="Bounty Payouts" 
+                count={incomeStats ? parseFloat((incomeStats.bountyTotal / 1000000).toFixed(2)) : 0} 
+                total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} 
+                color="gold" 
+              />
+              <StatCard 
+                label="ESS Payouts" 
+                count={incomeStats ? parseFloat((incomeStats.essTotal / 1000000).toFixed(2)) : 0} 
+                total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} 
+                color="gold" 
+              />
+              <StatCard 
+                label="Additional Income" 
+                count={incomeStats ? parseFloat((incomeStats.additional / 1000000).toFixed(2)) : 0} 
+                total={incomeStats && incomeStats.totalIncome > 0 ? incomeStats.totalIncome / 1000000 : 0} 
+                color="gold" 
+                actions={
+                  <button
+                    onClick={() => setIsAddIncomeModalOpen(true)}
+                    className="p-1 hover:bg-[#f0b419]/20 rounded text-[#f0b419] transition-all duration-200"
+                    title="Add manual entry"
+                  >
+                    <Plus size={14} />
+                  </button>
+                }
+              />
             </div>
           </section>
 
@@ -1978,51 +2172,84 @@ export default function App() {
           <section>
             <div className="flex items-center space-x-4 mb-4">
               <div className="flex items-baseline space-x-2">
-                <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.3em]">Efficiency</h3>
+                <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.3em]">Income Analysis</h3>
                 <span className="text-[10px] font-mono text-[#f0b419]/60 uppercase tracking-widest">
-                  | Averages
+                  | Breakdown
                 </span>
               </div>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/30 to-transparent"></div>
             </div>
-            <div className="grid grid-cols-4 gap-4">
-              <StatCard 
-                label="Average Bounty Tick" 
-                count={incomeStats && incomeStats.bountyCount > 0 ? parseFloat((incomeStats.bountyTotal / incomeStats.bountyCount / 1000000).toFixed(2)) : 0} 
-                total={0} 
-                color="gold" 
-                suffix={`from ${incomeStats?.bountyCount || 0} ticks`}
-              />
-              <StatCard 
-                label="Biggest Bounty Tick" 
-                count={incomeStats ? parseFloat((incomeStats.bountyMax / 1000000).toFixed(2)) : 0} 
-                total={0} 
-                color="gold" 
-              />
-              <StatCard 
-                label="Average ESS Payout" 
-                count={incomeStats && incomeStats.essCount > 0 ? parseFloat((incomeStats.essTotal / incomeStats.essCount / 1000000).toFixed(2)) : 0} 
-                total={0} 
-                color="gold" 
-                suffix={`from ${incomeStats?.essCount || 0} payouts`}
-              />
-              <StatCard 
-                label="Biggest ESS Payout" 
-                count={incomeStats ? parseFloat((incomeStats.essMax / 1000000).toFixed(2)) : 0} 
-                total={0} 
-                color="gold" 
-              />
+            <div className="grid grid-cols-2 gap-4">
+              {/* Ticks Breakdown */}
+              <div className="bg-[#141414] border border-[#f0b419]/20 p-4 rounded-lg hover:bg-[#f0b419]/5 transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.05)] flex flex-col">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Bounty Payout Breakdown</div>
+                <div className="flex items-end justify-between">
+                  <div className="text-3xl font-bold text-[#f0b419]">
+                    {incomeStats?.bountyCount || 0}
+                  </div>
+                  <div className="flex-1 ml-6 grid grid-cols-3 gap-2 border-l border-white/5 pl-4 py-1">
+                    <div className="flex flex-col">
+                      <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">Average</span>
+                      <span className="text-xs font-bold text-gray-300">
+                        {incomeStats && incomeStats.bountyCount > 0 ? (incomeStats.bountyTotal / incomeStats.bountyCount / 1000000).toFixed(2) : '0.00'}<span className="text-[9px] ml-0.5 opacity-50">M</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">High</span>
+                      <span className="text-xs font-bold text-[#00ff7f]">
+                        {((incomeStats?.bountyMax || 0) / 1000000).toFixed(2)}<span className="text-[9px] ml-0.5 opacity-50">M</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">Low</span>
+                      <span className="text-xs font-bold text-gray-400">
+                        {((incomeStats?.bountyMin || 0) / 1000000).toFixed(2)}<span className="text-[9px] ml-0.5 opacity-50">M</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payouts Breakdown */}
+              <div className="bg-[#141414] border border-[#f0b419]/20 p-4 rounded-lg hover:bg-[#f0b419]/5 transition-all duration-200 shadow-[0_0_15px_rgba(240,180,25,0.05)] flex flex-col">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">ESS Payout Breakdown</div>
+                <div className="flex items-end justify-between">
+                  <div className="text-3xl font-bold text-[#f0b419]">
+                    {incomeStats?.essCount || 0}
+                  </div>
+                  <div className="flex-1 ml-6 grid grid-cols-3 gap-2 border-l border-white/5 pl-4 py-1">
+                    <div className="flex flex-col">
+                      <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">Average</span>
+                      <span className="text-xs font-bold text-gray-300">
+                        {incomeStats && incomeStats.essCount > 0 ? (incomeStats.essTotal / incomeStats.essCount / 1000000).toFixed(2) : '0.00'}<span className="text-[9px] ml-0.5 opacity-50">M</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">High</span>
+                      <span className="text-xs font-bold text-[#00ff7f]">
+                        {((incomeStats?.essMax || 0) / 1000000).toFixed(2)}<span className="text-[9px] ml-0.5 opacity-50">M</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">Low</span>
+                      <span className="text-xs font-bold text-gray-400">
+                        {((incomeStats?.essMin || 0) / 1000000).toFixed(2)}<span className="text-[9px] ml-0.5 opacity-50">M</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
           {/* Activity Chart */}
           <section>
             <div className="flex items-center w-full mb-3">
-              <h3 className="text-[9px] font-bold text-[#00e5ff] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Income Activity (Last 30 Days)</h3>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-[#00e5ff]/50 to-transparent"></div>
+              <h3 className="text-[9px] font-bold text-[#f0b419] uppercase tracking-[0.3em] pr-3 whitespace-nowrap opacity-80">Income Activity (Last 30 Days)</h3>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-[#f0b419]/50 to-transparent"></div>
             </div>
-            <div className="bg-[#141414] border border-gray-800/50 rounded-lg pt-4 px-4 pb-[5px]">
-              <div className="h-[123px] relative flex items-end space-x-[2px] px-1 pb-[5px]">
+            <div className="bg-transparent px-1">
+              <div className="h-[80px] relative flex items-end space-x-1 px-1">
                 {(() => {
                   const daily = incomeStats?.dailyIncome || [];
                   const maxAmount = Math.max(...daily.map(d => d.amount), 1);
@@ -2035,20 +2262,56 @@ export default function App() {
                       : now;
                     const date = format(subDays(baseDate, 29 - i), 'yyyy-MM-dd');
                     const found = daily.find(d => d.date === date);
-                    return { date, amount: found?.amount || 0 };
+                    return { 
+                      date, 
+                      amount: found?.amount || 0,
+                      bounty: found?.bounty || 0,
+                      ess: found?.ess || 0,
+                      additional: found?.additional || 0
+                    };
                   });
 
                   return chartData.map((d, index) => {
-                    const heightPerc = (d.amount / maxAmount) * 85;
+                    const heightPerc = (d.amount / maxAmount) * 100;
+                    const alignLeft = index < 4;
+                    const alignRight = index > 25;
+
                     return (
-                      <div key={index} className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-default">
-                        <div className={`absolute -top-[40px] left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[9px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1`}>
-                          <span className="font-bold">{d.date}: </span>
-                          <span>{(d.amount / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}M ISK</span>
+                      <div 
+                        key={index} 
+                        className="flex-1 flex flex-col justify-end items-center group relative h-full cursor-pointer"
+                        onClick={() => {
+                          setDateRangeType('Custom');
+                          setCustomStartDate(d.date);
+                          setCustomEndDate(d.date);
+                        }}
+                      >
+                        <div className={`absolute -top-16 ${alignLeft ? 'left-0' : alignRight ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${alignLeft ? 'items-start' : alignRight ? 'items-end' : 'items-center'} min-w-[140px]`}>
+                          <span className="font-bold border-b border-[#f0b419]/30 pb-1 mb-1 w-full text-center">{format(new Date(d.date), 'EEEE, MMM dd')}</span>
+                          <div className="flex flex-col w-full space-y-0.5">
+                            <div className="flex justify-between items-center space-x-4">
+                              <span className="text-gray-400 text-[9px]">Total Income:</span>
+                              <span className="font-bold">{(d.amount / 1000000).toLocaleString(undefined, { maximumFractionDigits: 1 })}M</span>
+                            </div>
+                            <div className="flex justify-between items-center space-x-4 text-[#00ff7f]">
+                              <span className="opacity-70 text-[9px]">Bounty:</span>
+                              <span className="font-bold">{(d.bounty / 1000000).toLocaleString(undefined, { maximumFractionDigits: 1 })}M</span>
+                            </div>
+                            <div className="flex justify-between items-center space-x-4 text-[#00e5ff]">
+                              <span className="opacity-70 text-[9px]">ESS:</span>
+                              <span className="font-bold">{(d.ess / 1000000).toLocaleString(undefined, { maximumFractionDigits: 1 })}M</span>
+                            </div>
+                            {d.additional > 0 && (
+                              <div className="flex justify-between items-center space-x-4 text-[#bf94ff]">
+                                <span className="opacity-70 text-[9px]">Additional:</span>
+                                <span className="font-bold">{(d.additional / 1000000).toLocaleString(undefined, { maximumFractionDigits: 1 })}M</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div 
-                          className={`w-full transition-all duration-300 rounded-t-[1px] relative ${d.amount > 0 ? 'bg-[#f0b419]/10 border border-[#f0b419]/20 group-hover:bg-[#f0b419]/25' : 'bg-gray-800/20'}`}
-                          style={{ height: d.amount > 0 ? `${Math.max(heightPerc, 5)}%` : '2px' }}
+                          className={`w-full transition-all duration-300 rounded-t-[2px] ${d.amount > 0 ? 'bg-[#f0b419]/60 group-hover:bg-[#f0b419] shadow-[0_0_8px_rgba(240,180,25,0.4)]' : 'bg-[#f0b419]/10'}`}
+                          style={{ height: d.amount > 0 ? `${Math.max(heightPerc, 8)}%` : '2px' }}
                         ></div>
                       </div>
                     );
@@ -2104,7 +2367,29 @@ export default function App() {
 
             {/* Right side: Journal */}
             <div className="flex-1 flex flex-col bg-[#141414]/30 border border-gray-800/40 rounded-xl p-3 overflow-hidden min-w-0 relative">
-              <h3 className="text-[11px] font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-4 opacity-80 border-b border-[#f0b419]/20 pb-1.5">Recent Journal Transactions</h3>
+              <div className="flex items-center justify-between mb-4 border-b border-[#f0b419]/20 pb-1.5">
+                <h3 className="text-[11px] font-bold text-[#f0b419] uppercase tracking-[0.2em] opacity-80">Recent Journal Transactions</h3>
+                <div className="flex items-center bg-[#0d0d0d] border border-gray-800 rounded p-0.5 h-[22px]">
+                  <button 
+                    onClick={() => setJournalFilter('all')}
+                    className={`px-2 h-full rounded text-[8px] font-bold uppercase transition-all ${journalFilter === 'all' ? 'bg-[#f0b419]/20 text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    All
+                  </button>
+                  <button 
+                    onClick={() => setJournalFilter('api')}
+                    className={`px-2 h-full rounded text-[8px] font-bold uppercase transition-all ${journalFilter === 'api' ? 'bg-[#f0b419]/20 text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    API
+                  </button>
+                  <button 
+                    onClick={() => setJournalFilter('manual')}
+                    className={`px-2 h-full rounded text-[8px] font-bold uppercase transition-all ${journalFilter === 'manual' ? 'bg-[#f0b419]/20 text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Manual
+                  </button>
+                </div>
+              </div>
               <div 
                 id="journal-scroll-container"
                 className="flex-1 overflow-y-auto space-y-2 pr-1"
@@ -2124,23 +2409,43 @@ export default function App() {
                     return <div className="h-full flex items-center justify-center text-gray-600 text-[12px] italic">No transaction history found for this selection.</div>;
                   }
 
-                  return filteredJournal.map((entry) => (
-                    <div key={entry.ref_id} className="bg-[#1a1a1a] border border-gray-800/50 p-2.5 rounded-lg flex items-center justify-between text-xs hover:border-gray-700 transition-colors animate-in fade-in slide-in-from-bottom-1 duration-300">
-                      <div className="flex-1 flex items-center space-x-4 min-w-0">
-                        <div className="flex flex-col items-center font-mono whitespace-nowrap min-w-[55px]">
-                          <div className="text-[11px] font-bold text-gray-400">{formatTimestamp(entry.timestamp, 'HH:mm:ss')}</div>
-                          <div className="text-[11px] font-bold text-gray-400 uppercase">{formatTimestamp(entry.timestamp, 'MMM dd')}</div>
+                  return filteredJournal.map((entry) => {
+                    const pilot = entry.character_id ? esiAccounts.find(acc => acc.character_id === entry.character_id) : null;
+                    const entryTitle = entry.description || entry.ref_type;
+                    const displayTitle = pilot ? `${entryTitle} - ${pilot.character_name}` : entryTitle;
+
+                    return (
+                      <div key={entry.ref_id} className="bg-[#1a1a1a] border border-gray-800/50 p-2.5 rounded-lg flex items-center justify-between text-xs hover:border-gray-700 transition-colors animate-in fade-in slide-in-from-bottom-1 duration-300 group">
+                        <div className="flex-1 flex items-center space-x-4 min-w-0">
+                          <div className="flex flex-col items-center font-mono whitespace-nowrap min-w-[55px]">
+                            <div className="text-[11px] font-bold text-gray-400">{formatTimestamp(entry.timestamp, 'HH:mm:ss')}</div>
+                            <div className="text-[11px] font-bold text-gray-400 uppercase">{formatTimestamp(entry.timestamp, 'MMM dd')}</div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-gray-200 font-medium truncate text-[13px]">{displayTitle}</div>
+                            <div className="text-[10px] text-gray-500 uppercase tracking-tighter">{entry.ref_type.replace(/_/g, ' ')}</div>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-gray-200 font-medium truncate text-[13px]">{entry.description || entry.ref_type}</div>
-                          <div className="text-[10px] text-gray-500 uppercase tracking-tighter">{entry.ref_type.replace(/_/g, ' ')}</div>
+                        <div className="flex items-center relative pl-4">
+                          <div className={`font-bold text-[13px] text-right min-w-[90px] ${entry.amount > 0 ? 'text-[#00ff7f]' : 'text-red-500/70'}`}>
+                            {entry.amount > 0 ? '+' : ''}{Math.round(entry.amount).toLocaleString()}
+                          </div>
+                          {entry.ref_type === 'manual_entry' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setJournalEntryToDelete(entry.ref_id);
+                              }}
+                              className="p-1 text-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100 absolute right-[-4px] bg-[#1a1a1a]"
+                              title="Delete manual entry"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className={`font-bold ml-4 text-[13px] ${entry.amount > 0 ? 'text-[#00ff7f]' : 'text-red-500/70'}`}>
-                        {entry.amount > 0 ? '+' : ''}{Math.round(entry.amount).toLocaleString()}
-                      </div>
-                    </div>
-                  ));
+                    );
+                  });
                 })()}
                 {isLoadingJournal && (
                   <div className="py-4 flex justify-center">
@@ -3168,8 +3473,8 @@ export default function App() {
                           const count = stat ? stat.count : 0;
                           const heightPerc = (count / maxCountVal) * 100;
 
-                          const isLeftEdge = index === 0;
-                          const isRightEdge = index === 29;
+                          const alignLeft = index < 4;
+                          const alignRight = index > 25;
 
                           return (
                             <div
@@ -3181,7 +3486,7 @@ export default function App() {
                                 setCustomEndDate(dayStr);
                               }}
                             >
-                              <div className={`absolute -top-16 ${isLeftEdge ? 'left-0' : isRightEdge ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${isLeftEdge ? 'items-start' : isRightEdge ? 'items-end' : 'items-center'} min-w-[120px]`}>
+                              <div className={`absolute -top-16 ${alignLeft ? 'left-0' : alignRight ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${alignLeft ? 'items-start' : alignRight ? 'items-end' : 'items-center'} min-w-[120px]`}>
                                 <span className="font-bold border-b border-[#f0b419]/30 pb-1 mb-1 w-full text-center">{format(new Date(dayStr), 'EEEE, MMM dd')}</span>
                                 <div className="flex flex-col w-full space-y-0.5">
                                   <div className="flex justify-between items-center space-x-4">
@@ -3623,8 +3928,8 @@ export default function App() {
                           const count = stat ? stat.count : 0;
                           const heightPerc = (count / maxCountVal) * 100;
 
-                          const isLeftEdge = index === 0;
-                          const isRightEdge = index === 29;
+                          const alignLeft = index < 4;
+                          const alignRight = index > 25;
 
                           return (
                             <div
@@ -3636,7 +3941,7 @@ export default function App() {
                                 setCustomEndDate(dayStr);
                               }}
                             >
-                              <div className={`absolute -top-16 ${isLeftEdge ? 'left-0' : isRightEdge ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${isLeftEdge ? 'items-start' : isRightEdge ? 'items-end' : 'items-center'} min-w-[120px]`}>
+                              <div className={`absolute -top-16 ${alignLeft ? 'left-0' : alignRight ? 'right-0' : 'left-1/2 -translate-x-1/2'} bg-[#1a1a1a] border border-[#f0b419]/50 text-[#f0b419] text-[10px] px-3 py-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 flex flex-col ${alignLeft ? 'items-start' : alignRight ? 'items-end' : 'items-center'} min-w-[120px]`}>
                                 <span className="font-bold border-b border-[#f0b419]/30 pb-1 mb-1 w-full text-center">{format(new Date(dayStr), 'EEEE, MMM dd')}</span>
                                 <div className="flex flex-col w-full space-y-0.5">
                                   <div className="flex justify-between items-center space-x-4">
@@ -4130,6 +4435,308 @@ export default function App() {
                     );
                   })
                 )}
+              </div>
+            </div>
+          )}
+          {/* Add Manual Income Modal */}
+          {isAddIncomeModalOpen && (
+            <div className="fixed inset-0 bg-[#0a0a0a]/90 backdrop-blur-sm flex items-center justify-center z-[70] animate-in fade-in duration-200">
+              <div className="bg-[#141414] border border-[#f0b419]/30 shadow-2xl rounded-lg w-full max-w-[425px] mx-4 overflow-hidden">
+                <div className="p-4 border-b border-[#f0b419]/20 flex justify-between items-center bg-[#0d0d0d]">
+                  <h3 className="text-sm font-bold text-[#f0b419] uppercase tracking-[0.2em] flex items-center">
+                    <Plus size={16} className="mr-2" />
+                    Add Manual Income
+                  </h3>
+                  <button onClick={() => setIsAddIncomeModalOpen(false)} className="text-gray-500 hover:text-white transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-5">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Record Date</label>
+                    <div className="relative group cursor-pointer">
+                      <div className="w-full bg-[#0d0d0d] border border-gray-800 rounded px-3 py-2 text-sm text-white group-focus-within:border-[#f0b419]/50 transition-colors flex items-center justify-between min-h-[38px]">
+                        <span className="font-medium">
+                          {(() => {
+                            try {
+                              const [y, m, d] = addIncomeForm.date.split('-').map(Number);
+                              const dateObj = new Date(y, m - 1, d);
+                              // Use the format string retrieved from Windows Registry
+                              return format(dateObj, systemDateFormat);
+                            } catch (e) {
+                              return addIncomeForm.date;
+                            }
+                          })()}
+                        </span>
+                        <Calendar size={14} className="text-gray-600" />
+                      </div>
+                      <input
+                        type="date"
+                        value={addIncomeForm.date}
+                        onChange={(e) => setAddIncomeForm({ ...addIncomeForm, date: e.target.value })}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Assign to Character (Optional)</label>
+                    <select
+                      value={addIncomeForm.characterId}
+                      onChange={(e) => setAddIncomeForm({ ...addIncomeForm, characterId: parseInt(e.target.value) })}
+                      className="w-full bg-[#0d0d0d] border border-gray-800 rounded px-3 py-2 text-sm text-white focus:border-[#f0b419]/50 outline-none transition-colors"
+                    >
+                      <option value={0}>None / Unassigned</option>
+                      {esiAccounts.map(acc => (
+                        <option key={acc.character_id} value={acc.character_id}>{acc.character_name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Income Category</label>
+                    <select
+                      value={addIncomeForm.type}
+                      onChange={(e) => {
+                        setAddIncomeForm({ ...addIncomeForm, type: e.target.value });
+                        if (e.target.value) setAddIncomeErrors(prev => ({ ...prev, type: undefined }));
+                      }}
+                      className={`w-full bg-[#0d0d0d] border ${addIncomeErrors.type ? 'border-red-500/50' : 'border-gray-800'} rounded px-3 py-2 text-sm text-white focus:border-[#f0b419]/50 outline-none transition-colors`}
+                    >
+                      <option value="">Select Income Category...</option>
+                      <option value="Sold Escalations">Sold Escalations</option>
+                      <option value="Loot Value">Loot Value</option>
+                    </select>
+                    {addIncomeErrors.type && <span className="text-[10px] text-red-500 mt-1 block font-medium">{addIncomeErrors.type}</span>}
+                  </div>
+
+                  {addIncomeForm.type === 'Sold Escalations' && (
+                    <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Total ISK Amount</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="0"
+                          value={formatISKInput(addIncomeForm.amount)}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            setAddIncomeForm({ ...addIncomeForm, amount: val });
+                            if (val) setAddIncomeErrors(prev => ({ ...prev, amount: undefined }));
+                          }}
+                          className={`w-full bg-[#0d0d0d] border ${addIncomeErrors.amount ? 'border-red-500/50' : 'border-gray-800'} rounded px-3 py-2 text-sm text-white focus:border-[#f0b419]/50 outline-none transition-colors pr-12 font-mono`}
+                        />
+                        <span className="absolute right-3 top-2.5 text-[9px] text-[#f0b419] font-bold tracking-tight opacity-70">ISK</span>
+                      </div>
+                      {addIncomeErrors.amount && <span className="text-[10px] text-red-500 mt-1 block font-medium">{addIncomeErrors.amount}</span>}
+                    </div>
+                  )}
+
+                  {addIncomeForm.type === 'Loot Value' && modalStep === 'input' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Market</label>
+                          <select
+                            value={settings.janiceMarket}
+                            onChange={(e) => saveSettings({ ...settings, janiceMarket: Number(e.target.value) })}
+                            className="w-full bg-[#0a0a0a] border border-gray-800 text-white p-2 rounded text-xs focus:border-[#f0b419]/50 outline-none appearance-none"
+                          >
+                            {JANICE_MARKETS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Price Source</label>
+                          <select
+                            value={settings.janicePricingVariant}
+                            onChange={(e) => saveSettings({ ...settings, janicePricingVariant: e.target.value as any })}
+                            className="w-full bg-[#0a0a0a] border border-gray-800 text-white p-2 rounded text-xs focus:border-[#f0b419]/50 outline-none appearance-none"
+                          >
+                            <option value="immediate">Immediate</option>
+                            <option value="top5percent">Top 5% Avg</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Price Type</label>
+                          <select
+                            value={settings.janicePriceType}
+                            onChange={(e) => saveSettings({ ...settings, janicePriceType: e.target.value as any })}
+                            className="w-full bg-[#0a0a0a] border border-gray-800 text-white p-2 rounded text-xs focus:border-[#f0b419]/50 outline-none appearance-none capitalize"
+                          >
+                            <option value="sell">Sell Price</option>
+                            <option value="buy">Buy Price</option>
+                            <option value="split">Split Price</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Price %</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={settings.janicePercentage || 100}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? 100 : Math.max(1, Math.min(100, Number(e.target.value)));
+                                saveSettings({ ...settings, janicePercentage: val });
+                              }}
+                              onBlur={(e) => {
+                                if (e.target.value === '') {
+                                  saveSettings({ ...settings, janicePercentage: 100 });
+                                }
+                              }}
+                              className="w-full bg-[#0a0a0a] border border-gray-800 text-white p-2 rounded text-xs focus:border-[#f0b419]/50 outline-none pr-8"
+                            />
+                            <span className="absolute right-2 top-2 text-[10px] text-gray-500 font-bold">%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Paste Loot from EVE</label>
+                        <textarea
+                          placeholder="Paste item list here (e.g. Tritanium 100)..."
+                          value={addIncomeForm.lootText}
+                          onChange={(e) => setAddIncomeForm({ ...addIncomeForm, lootText: e.target.value })}
+                          className="w-full h-32 bg-[#0a0a0a] border border-gray-800 text-gray-200 p-3 rounded text-xs focus:outline-none focus:border-[#f0b419]/50 transition-all resize-none font-mono"
+                        />
+                        <div className="text-[9px] text-gray-600 font-bold italic text-right opacity-60">Powered by janice.e-351.com</div>
+                        {addIncomeErrors.amount && <span className="text-[10px] text-red-500 mt-1 block font-medium">{addIncomeErrors.amount}</span>}
+                      </div>
+                    </div>
+                  )}
+
+                  {addIncomeForm.type === 'Loot Value' && modalStep === 'confirm' && appraisalResult && (
+                    <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="bg-[#f0b419]/5 border border-[#f0b419]/20 rounded-lg p-4 text-center">
+                        <label className="text-[9px] font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-1 block">FINAL PRICE VALUE ({settings.janicePercentage}%)</label>
+                        <div className="text-2xl font-bold text-white font-mono">
+                          {(() => {
+                            const root = settings.janicePricingVariant === 'immediate' ? appraisalResult.immediatePrices : appraisalResult.top5AveragePrices;
+                            const field = settings.janicePriceType === 'sell' ? 'totalSellPrice' : settings.janicePriceType === 'buy' ? 'totalBuyPrice' : 'totalSplitPrice';
+                            const base = root ? root[field] : 0;
+                            const finalValue = Math.ceil(base * (settings.janicePercentage / 100));
+                            return finalValue.toLocaleString();
+                          })()}
+                          <span className="text-xs ml-1.5 text-[#f0b419]/60">ISK</span>
+                        </div>
+                        {settings.janicePercentage < 100 && (
+                          <div className="text-[9px] text-gray-500 mt-1 uppercase tracking-wider font-bold">
+                            Raw Total: {(() => {
+                              const root = settings.janicePricingVariant === 'immediate' ? appraisalResult.immediatePrices : appraisalResult.top5AveragePrices;
+                              const field = settings.janicePriceType === 'sell' ? 'totalSellPrice' : settings.janicePriceType === 'buy' ? 'totalBuyPrice' : 'totalSplitPrice';
+                              return root ? root[field].toLocaleString() : '0';
+                            })()} ISK
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-[#141414] border border-gray-800 p-2 rounded text-center">
+                          <div className="text-[8px] text-gray-500 uppercase font-black tracking-widest">Market</div>
+                          <div className="text-xs text-white font-bold">{JANICE_MARKETS.find(m => m.id === settings.janiceMarket)?.name}</div>
+                        </div>
+                        <div className="bg-[#141414] border border-gray-800 p-2 rounded text-center">
+                          <div className="text-[8px] text-gray-500 uppercase font-black tracking-widest">Pricing Source</div>
+                          <div className="text-xs text-white font-bold">{settings.janicePricingVariant === 'immediate' ? 'Immediate' : 'Top 5% Avg'}</div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-[9px] text-center text-gray-500 italic">
+                        Appraised {appraisalResult.items.length} items via Janice API
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 bg-[#0d0d0d] border-t border-gray-800/50 flex flex-col space-y-2">
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => {
+                        if (modalStep === 'confirm') {
+                          setModalStep('input');
+                        } else {
+                          setIsAddIncomeModalOpen(false);
+                        }
+                      }}
+                      className="flex-1 py-2.5 bg-gray-800 text-gray-300 font-bold text-xs uppercase tracking-widest rounded hover:bg-gray-700 transition-colors"
+                    >
+                      {modalStep === 'confirm' ? 'Back' : 'Cancel'}
+                    </button>
+                    
+                    {addIncomeForm.type === 'Loot Value' && modalStep === 'input' ? (
+                      <button
+                        onClick={handleAppraiseLoot}
+                        disabled={isAppraising || !addIncomeForm.lootText.trim()}
+                        className="flex-1 bg-[#141414] border border-[#f0b419]/50 text-[#f0b419] py-2.5 rounded text-xs font-bold uppercase tracking-widest hover:bg-[#f0b419] hover:text-[#0a0a0a] transition-all disabled:opacity-50 flex items-center justify-center space-x-2 shadow-[0_0_15px_rgba(240,180,25,0.05)]"
+                      >
+                        {isAppraising ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin" />
+                            <span>Appraising...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Activity size={14} />
+                            <span>Appraise Loot</span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (addIncomeForm.type === 'Loot Value' && modalStep === 'confirm') {
+                            const root = settings.janicePricingVariant === 'immediate' ? appraisalResult.immediatePrices : appraisalResult.top5AveragePrices;
+                            const field = settings.janicePriceType === 'sell' ? 'totalSellPrice' : settings.janicePriceType === 'buy' ? 'totalBuyPrice' : 'totalSplitPrice';
+                            const baseAmount = root ? root[field] : 0;
+                            const finalAmount = Math.floor(baseAmount * (settings.janicePercentage / 100));
+                            handleAddIncome(finalAmount);
+                          } else {
+                            handleAddIncome();
+                          }
+                        }}
+                        className={`flex-1 py-2.5 ${modalStep === 'confirm' ? 'bg-[#00ff7f] text-black border-[#00ff7f]' : 'bg-[#f0b419] text-[#0a0a0a] border-[#f0b419]'} font-black text-xs uppercase tracking-[0.2em] rounded hover:brightness-110 transition-all shadow-[0_0_15px_rgba(240,180,25,0.15)] flex items-center justify-center space-x-2`}
+                      >
+                        {modalStep === 'confirm' ? <Plus size={16} /> : null}
+                        <span>{modalStep === 'confirm' ? 'Confirm Import' : 'Add Entry'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Journal Entry Confirmation Modal */}
+          {journalEntryToDelete !== null && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200 backdrop-blur-sm">
+              <div className="bg-[#141414] border border-red-500/30 rounded-lg p-6 w-full max-w-[320px] shadow-2xl">
+                <div className="flex flex-col items-center text-center">
+                  <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4 border border-red-500/20">
+                    <Trash2 size={32} className="text-red-500" />
+                  </div>
+                  <h3 className="text-white font-bold text-lg mb-2 uppercase tracking-tight">Delete Transaction?</h3>
+                  <p className="text-gray-400 text-xs mb-6 leading-relaxed">
+                    This will permanently remove this manual income record from your history and statistics. This action cannot be undone.
+                  </p>
+                  <div className="flex w-full space-x-3">
+                    <button
+                      onClick={handleDeleteJournalEntry}
+                      className="flex-1 py-2.5 bg-red-600 text-white font-bold text-xs uppercase tracking-widest rounded hover:bg-red-500 transition-colors shadow-lg shadow-red-900/20"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setJournalEntryToDelete(null)}
+                      className="flex-1 py-2.5 bg-[#222] text-gray-400 font-bold text-xs uppercase tracking-widest rounded hover:bg-[#333] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

@@ -86,6 +86,27 @@ fn get_migrations() -> Vec<Migration> {
             );
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "make_character_id_optional",
+            sql: "
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE wallet_journal_new (
+                ref_id INTEGER PRIMARY KEY,
+                character_id INTEGER,
+                timestamp DATETIME NOT NULL,
+                amount REAL NOT NULL,
+                ref_type TEXT NOT NULL,
+                description TEXT,
+                FOREIGN KEY(character_id) REFERENCES esi_accounts(character_id) ON DELETE CASCADE
+            );
+            INSERT INTO wallet_journal_new SELECT * FROM wallet_journal;
+            DROP TABLE wallet_journal;
+            ALTER TABLE wallet_journal_new RENAME TO wallet_journal;
+            PRAGMA foreign_keys=ON;
+            ",
+            kind: MigrationKind::Up,
         }
     ]
 }
@@ -331,6 +352,30 @@ fn restart_app(app_handle: tauri::AppHandle) {
     app_handle.restart();
 }
 
+#[tauri::command]
+async fn janice_appraise(loot_text: String, market_id: i32, api_key: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let url = format!("https://janice.e-351.com/api/rest/v2/appraisal?market={}&persist=false", market_id);
+    
+    let res = client.post(url)
+        .header("X-ApiKey", api_key)
+        .header("Content-Type", "text/plain")
+        .body(loot_text)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("Janice API returned error: {}", res.status()));
+    }
+
+    let json = res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(json)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let db_url = format!("sqlite:{}", get_db_file_path().to_string_lossy());
@@ -392,7 +437,8 @@ pub fn run() {
             esi::link_eve_character,
             esi::get_character_public_info,
             esi::refresh_esi_token,
-            esi::sync_wallet_journal
+            esi::sync_wallet_journal,
+            janice_appraise
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
