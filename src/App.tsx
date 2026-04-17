@@ -78,6 +78,7 @@ interface IncomeStatsData {
   essMin: number;
   additional: number;
   dailyIncome: DailyIncomeStat[];
+  estIncomePerHour: number;
 }
 
 interface StatsData {
@@ -1325,6 +1326,97 @@ export default function App() {
       `;
       const dailyResult = await database.select(dailyQuery);
 
+      // 4. Calculate Duration for Est. Income / Hour
+      // We always calculate hours for ALL characters in the period to correctly split unassigned income
+
+      const baseParams: any[] = [];
+      const baseConditions: string[] = [];
+      if (dateRange.start) {
+        baseConditions.push(`date(timestamp${tm}) >= ?`);
+        baseParams.push(dateRange.start);
+      }
+      if (dateRange.end) {
+        baseConditions.push(`date(timestamp${tm}) <= ?`);
+        baseParams.push(dateRange.end);
+      }
+      const baseWhere = baseConditions.length > 0 ? " WHERE " + baseConditions.join(" AND ") : "";
+
+      const allBountyQuery = `
+        SELECT timestamp, character_id
+        FROM wallet_journal
+        ${baseWhere}
+        ${baseWhere ? 'AND' : 'WHERE'} LOWER(ref_type) = 'bounty_prizes'
+        AND amount >= 100000
+        ORDER BY timestamp ASC
+      `;
+      const allBountyEntries = await database.select(allBountyQuery, baseParams) as any[];
+
+      const characterDurations: Record<number, number> = {};
+      const characterIntervals: Record<number, {start: number, end: number}[]> = {};
+      
+      allBountyEntries.forEach(entry => {
+        const charId = entry.character_id;
+        const end = new Date(entry.timestamp).getTime();
+        const start = end - (20 * 60 * 1000);
+        if (!characterIntervals[charId]) characterIntervals[charId] = [];
+        characterIntervals[charId].push({ start, end });
+      });
+
+      let totalSetupHours = 0;
+      Object.entries(characterIntervals).forEach(([charIdStr, intervals]) => {
+        const charId = parseInt(charIdStr);
+        const merged: {start: number, end: number}[] = [];
+        let current = intervals[0];
+        for (let i = 1; i < intervals.length; i++) {
+          const next = intervals[i];
+          if (next.start <= current.end) {
+            current.end = Math.max(current.end, next.end);
+          } else {
+            merged.push(current);
+            current = next;
+          }
+        }
+        merged.push(current);
+        
+        let charActiveMinutes = 0;
+        merged.forEach(interval => {
+          charActiveMinutes += (interval.end - interval.start) / (1000 * 60);
+        });
+        const charHours = charActiveMinutes / 60;
+        characterDurations[charId] = charHours;
+        totalSetupHours += charHours;
+      });
+
+      // Income partitioned into assigned and unassigned
+      const incomeGroupQuery = `
+        SELECT character_id, SUM(amount) as total
+        FROM wallet_journal
+        ${baseWhere}
+        AND amount > 0
+        AND (LOWER(ref_type) != 'bounty_prizes' OR amount >= 100000)
+        GROUP BY character_id
+      `;
+      const incomeGroups = await database.select(incomeGroupQuery, baseParams) as any[];
+      
+      const unassignedIncome = incomeGroups.find(r => r.character_id === null || r.character_id === 0)?.total || 0;
+      
+      let totalEstIncomePerHour = 0;
+
+      // Calculate rate for each active character and sum them up (or show just one if filtered)
+      Object.entries(characterDurations).forEach(([charIdStr, charHours]) => {
+        const charId = parseInt(charIdStr);
+        if (charHours <= 0) return;
+
+        // If a specific character is selected, only add to the total if it matches
+        if (selectedCharacterId && charId !== selectedCharacterId) return;
+
+        const charAssignedIncome = incomeGroups.find(r => r.character_id === charId)?.total || 0;
+        // Unassigned income is split proportionally to hours
+        const charDistributedIncome = totalSetupHours > 0 ? (charHours / totalSetupHours) * unassignedIncome : 0;
+        
+        totalEstIncomePerHour += (charAssignedIncome + charDistributedIncome) / charHours;
+      });
+
       setIncomeStats({
         totalIncome: row?.total || 0,
         todayIncome: row?.today || 0,
@@ -1338,7 +1430,8 @@ export default function App() {
         essMax: row?.ess_max || 0,
         essMin: row?.ess_min || 0,
         additional: row?.additional || 0,
-        dailyIncome: dailyResult as DailyIncomeStat[]
+        dailyIncome: dailyResult as DailyIncomeStat[],
+        estIncomePerHour: totalEstIncomePerHour
       });
 
     } catch (error) {
@@ -2134,7 +2227,10 @@ export default function App() {
               </div>
               <div className="text-xs font-bold text-[#f0b419] uppercase tracking-[0.2em] mb-2">Est. Income / Hour</div>
               <div className="text-5xl font-black text-white tracking-tighter flex items-baseline">
-                TBD
+                {incomeStats && incomeStats.estIncomePerHour > 0 
+                  ? (incomeStats.estIncomePerHour / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) 
+                  : '0.0'}
+                <span className="text-xl ml-2 text-[#f0b419]/60">M</span>
               </div>
             </div>
           </div>

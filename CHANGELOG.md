@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 - Added automatic data refresh in Income Stats after a wallet sync completes.
 - Refined Income Analysis UI with neutral status colors for "High" data points.
 - Optimized Income Stats horizontal layout to prevent overflow when using Custom Range filters.
+- Added **Est. Income / Hour** metric to the Income Stats dashboard.
+- Implemented character-based rate aggregation (Sum of Rates) to accurately count multiboxing setup throughput.
+- Added proportional distribution logic for unassigned income (Manual Entries) among active characters.
+- Added a noise filter to exclude bounty payouts under 100,000 ISK from hourly efficiency calculations.
 
 
 ## [0.4.5] - 2026-04-17
