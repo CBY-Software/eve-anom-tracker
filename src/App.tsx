@@ -689,7 +689,7 @@ export default function App() {
 
       const newSettings = { ...DEFAULT_SETTINGS, ...loadedSettings };
       setSettings(newSettings);
-      await applySettings(newSettings);
+      // Removed manual applySettings(newSettings) - now handled reactively by useEffect
 
       // Persist layout-critical settings so first render can bootstrap without flicker
       localStorage.setItem('anomtracker_bootstrap', JSON.stringify({
@@ -711,7 +711,7 @@ export default function App() {
 
   const saveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
-    applySettings(newSettings);
+    // Removed manual applySettings(newSettings) - now handled reactively by useEffect
 
     // Keep the bootstrap cache up to date so next launch is flicker-free
     localStorage.setItem('anomtracker_bootstrap', JSON.stringify({
@@ -820,6 +820,12 @@ export default function App() {
       setCurrentView('incomeStats');
     }
   }, [settings.combatAnomalyTracking, settings.beltTracking, currentView]);
+
+  // Reactive window resizing based on current view and settings
+  useEffect(() => {
+    if (!isSettingsLoaded) return;
+    applySettings(settings);
+  }, [currentView, settings.orientation, settings.globalScale, settings.alwaysOnTop, isCollapsed, isSettingsLoaded]);
 
   const playTone = (type: 'log' | 'delete') => {
     if (!settings.enableSounds) return;
@@ -1504,6 +1510,7 @@ export default function App() {
   useEffect(() => {
     if (db && currentView === 'incomeStats') {
       fetchJournal(true);
+      fetchIncomeStats(db);
     }
   }, [db, currentView, selectedCharacterId, dateRangeType, customStartDate, customEndDate, journalFilter]);
 
@@ -4095,7 +4102,7 @@ export default function App() {
             {currentView === 'settings' && (
               <Settings
                 settings={settings}
-                onSettingsChange={setSettings}
+                onSettingsChange={saveSettings}
                 showToast={showToast}
                 appVersion={appVersion}
                 updateInfo={updateInfo}

@@ -5,6 +5,7 @@
 - **Concise & High-Level:** Each bullet point must be a summary of the *result*, not a log of the *work*.
 - **No Implementation Details:** Strictly forbidden to list file names, function names, terminal commands, or internal logic steps.
 - **No Application Version Changes:** Strictly forbidden to change application internal versioning unless explicitly asked to.
+- **No Changelog Version Changes:** Strictly forbidden to change application changelog versioning unless explicitly asked to. Use the latest version present in the file for new updates unless explicitly asked to change it.
 
 ## 2. The "Internal Plumbing" Filter
 Do NOT list the following types of technical tasks. Instead, fold them into the high-level feature bullet or omit them entirely:

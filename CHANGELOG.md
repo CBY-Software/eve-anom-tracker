@@ -6,8 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Application
 - Added feature toggles in Settings to show or hide **Combat Anomaly Tracking** and **Belt Tracking** modules.
+- Fixed a bug where feature toggles would reset to defaults after a restart.
+- Fixed an issue where the application window would not resize correctly when switching views.
 
 ### Income & Statistics
+- Fixed an issue where the Income Stats dashboard would appear empty on initial load.
 - Set default filter to "Today" on the Income Stats screen for better immediate visibility.
 - Added automatic data refresh in Income Stats after a wallet sync completes.
 - Refined Income Analysis UI with neutral status colors for "High" data points.
