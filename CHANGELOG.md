@@ -7,6 +7,13 @@ All notable changes to this project will be documented in this file.
 ### Application
 - Added feature toggles in Settings to show or hide **Combat Anomaly Tracking** and **Belt Tracking** modules.
 
+### Income & Statistics
+- Set default filter to "Today" on the Income Stats screen for better immediate visibility.
+- Added automatic data refresh in Income Stats after a wallet sync completes.
+- Refined Income Analysis UI with neutral status colors for "High" data points.
+- Optimized Income Stats horizontal layout to prevent overflow when using Custom Range filters.
+
+
 ## [0.4.5] - 2026-04-17
 
 ### Janice API & Loot Appraisal

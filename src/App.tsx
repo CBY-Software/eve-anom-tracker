@@ -310,7 +310,7 @@ export default function App() {
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
   const [statsFilter, setStatsFilter] = useState<string>('All');
-  const [dateRangeType, setDateRangeType] = useState<'All' | 'Today' | 'Yesterday' | 'Week' | 'Month' | 'Custom'>('All');
+  const [dateRangeType, setDateRangeType] = useState<'All' | 'Today' | 'Yesterday' | 'Week' | 'Month' | 'Custom'>('Today');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [logToDelete, setLogToDelete] = useState<number | null>(null);
@@ -1879,6 +1879,7 @@ export default function App() {
       
       // Load journal for display
       fetchJournal(true);
+      fetchIncomeStats(db);
       showToast('Wallet sync complete');
     } catch (error) {
       console.error('Sync failed:', error);
@@ -2017,14 +2018,14 @@ export default function App() {
           </button>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2.5">
           {statsSubView === 'general' && (
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1">
               <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Character:</span>
               <select
                 value={selectedCharacterId || ''}
                 onChange={(e) => setSelectedCharacterId(e.target.value ? parseInt(e.target.value) : null)}
-                className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[120px] font-bold py-0 appearance-none"
+                className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[110px] font-bold py-0 appearance-none"
               >
                 <option value="">All Characters</option>
                 {esiAccounts.map(acc => (
@@ -2034,12 +2035,12 @@ export default function App() {
             </div>
           )}
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1">
             <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter">Date:</span>
             <select
               value={dateRangeType}
               onChange={(e) => setDateRangeType(e.target.value as any)}
-              className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[105px] font-bold py-0 appearance-none"
+              className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/80 text-[10px] h-[26px] px-2 rounded focus:outline-none focus:border-[#f0b419]/50 min-w-[100px] font-bold py-0 appearance-none"
             >
               <option value="All">All Time</option>
               <option value="Today">Today</option>
@@ -2050,7 +2051,7 @@ export default function App() {
           </div>
 
           {dateRangeType === 'Custom' && (
-            <div className="flex items-center space-x-1 animate-in fade-in slide-in-from-right-1 duration-300">
+            <div className="flex items-center space-x-0.5 animate-in fade-in slide-in-from-right-1 duration-300">
               <div className="relative group">
                 <input
                   type="date"
@@ -2058,7 +2059,7 @@ export default function App() {
                   onChange={(e) => setCustomStartDate(e.target.value)}
                   className="absolute inset-0 opacity-0 cursor-pointer z-10"
                 />
-                <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[78px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
                   <span className="truncate">{customStartDate ? formatLocalDate(customStartDate) : 'From...'}</span>
                   <Calendar size={9} className="opacity-40" />
                 </div>
@@ -2071,14 +2072,14 @@ export default function App() {
                   onChange={(e) => setCustomEndDate(e.target.value)}
                   className="absolute inset-0 opacity-0 cursor-pointer z-10"
                 />
-                <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[82px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
+                <div className="bg-[#141414] border border-[#f0b419]/20 text-[#f0b419]/60 text-[9px] h-[26px] px-1.5 rounded w-[78px] flex justify-between items-center group-hover:border-[#f0b419]/40 transition-colors">
                   <span className="truncate">{customEndDate ? formatLocalDate(customEndDate) : 'To...'}</span>
                   <Calendar size={9} className="opacity-40" />
                 </div>
               </div>
             </div>
           )}
-          <div className="border-l border-white/5 h-4 mx-1"></div>
+          <div className="border-l border-white/5 h-4 mx-0.5"></div>
 
           <button
             onClick={syncAllWallets}
@@ -2208,7 +2209,7 @@ export default function App() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">High</span>
-                      <span className="text-xs font-bold text-[#00ff7f]">
+                      <span className="text-xs font-bold text-gray-300">
                         {((incomeStats?.bountyMax || 0) / 1000000).toFixed(2)}<span className="text-[9px] ml-0.5 opacity-50">M</span>
                       </span>
                     </div>
@@ -2238,7 +2239,7 @@ export default function App() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">High</span>
-                      <span className="text-xs font-bold text-[#00ff7f]">
+                      <span className="text-xs font-bold text-gray-300">
                         {((incomeStats?.essMax || 0) / 1000000).toFixed(2)}<span className="text-[9px] ml-0.5 opacity-50">M</span>
                       </span>
                     </div>

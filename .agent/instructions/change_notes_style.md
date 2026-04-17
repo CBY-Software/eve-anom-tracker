@@ -4,6 +4,7 @@
 - **User-Facing Value Only:** Only document changes that a user can see, click, or experience directly.
 - **Concise & High-Level:** Each bullet point must be a summary of the *result*, not a log of the *work*.
 - **No Implementation Details:** Strictly forbidden to list file names, function names, terminal commands, or internal logic steps.
+- **No Application Version Changes:** Strictly forbidden to change application internal versioning unless explicitly asked to.
 
 ## 2. The "Internal Plumbing" Filter
 Do NOT list the following types of technical tasks. Instead, fold them into the high-level feature bullet or omit them entirely:
