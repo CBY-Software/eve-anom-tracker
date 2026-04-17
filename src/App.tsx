@@ -1398,7 +1398,7 @@ export default function App() {
         SELECT character_id, SUM(amount) as total
         FROM wallet_journal
         ${baseWhere}
-        AND amount > 0
+        ${baseWhere ? 'AND' : 'WHERE'} amount > 0
         AND (LOWER(ref_type) != 'bounty_prizes' OR amount >= 100000)
         GROUP BY character_id
       `;
