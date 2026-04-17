@@ -179,6 +179,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   janicePriceType: 'sell',
   janicePricingVariant: 'immediate',
   janicePercentage: 100,
+  combatAnomalyTracking: true,
+  beltTracking: true,
 };
 
 // Bootstrap key layout settings synchronously from localStorage to avoid
@@ -807,6 +809,16 @@ export default function App() {
       localStorage.removeItem('anomtracker_selected_system');
     }
   }, [settings.preferredSystems, isSettingsLoaded]);
+
+  // Auto-redirect if current view is disabled via feature toggles
+  useEffect(() => {
+    if (!settings.combatAnomalyTracking && (currentView === 'combat' || currentView === 'combatStats')) {
+      setCurrentView('incomeStats');
+    }
+    if (!settings.beltTracking && (currentView === 'belt' || currentView === 'beltStats')) {
+      setCurrentView('incomeStats');
+    }
+  }, [settings.combatAnomalyTracking, settings.beltTracking, currentView]);
 
   const playTone = (type: 'log' | 'delete') => {
     if (!settings.enableSounds) return;
@@ -2502,30 +2514,38 @@ export default function App() {
           <Titlebar isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />
           <header className="px-4 py-2 border-b border-[#f0b419]/10 flex justify-between items-center relative z-20 bg-[#0a0a0a]">
             <div className="flex space-x-6">
-              <button
-                onClick={() => setCurrentView('combat')}
-                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'combat' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                Combat Log
-              </button>
-              <button
-                onClick={() => setCurrentView('combatStats')}
-                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'combatStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                Combat Stats
-              </button>
-              <button
-                onClick={() => setCurrentView('belt')}
-                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'belt' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                Belt Log
-              </button>
-              <button
-                onClick={() => setCurrentView('beltStats')}
-                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'beltStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                Belt Stats
-              </button>
+              {settings.combatAnomalyTracking && (
+                <>
+                  <button
+                    onClick={() => setCurrentView('combat')}
+                    className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'combat' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Combat Log
+                  </button>
+                  <button
+                    onClick={() => setCurrentView('combatStats')}
+                    className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'combatStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Combat Stats
+                  </button>
+                </>
+              )}
+              {settings.beltTracking && (
+                <>
+                  <button
+                    onClick={() => setCurrentView('belt')}
+                    className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'belt' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Belt Log
+                  </button>
+                  <button
+                    onClick={() => setCurrentView('beltStats')}
+                    className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'beltStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Belt Stats
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => setCurrentView('incomeStats')}
                 className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'incomeStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}

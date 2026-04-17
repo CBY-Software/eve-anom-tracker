@@ -30,6 +30,8 @@ export interface AppSettings {
   janicePriceType: 'sell' | 'buy' | 'split';
   janicePricingVariant: 'immediate' | 'top5percent';
   janicePercentage: number;
+  combatAnomalyTracking: boolean;
+  beltTracking: boolean;
 }
 
 interface SettingsProps {
@@ -390,6 +392,55 @@ export default function Settings({
                     <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                       <Activity size={12} className="text-[#f0b419]/50" />
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-6 border-t border-gray-800">
+                  <div className="flex items-center space-x-2">
+                    <Power size={14} className="text-[#f0b419]" />
+                    <label className="text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Feature Modules
+                    </label>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-medium text-gray-300 uppercase tracking-wider group-hover:text-[#f0b419] transition-colors">
+                          Combat Anomaly Tracking
+                        </span>
+                        <span className="text-[10px] text-gray-500">Show/hide Combat Log and Stats menu elements</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={settings.combatAnomalyTracking}
+                          onChange={(e) => handleChange('combatAnomalyTracking', e.target.checked)}
+                        />
+                        <div className={`block w-10 h-6 rounded-full transition-colors ${settings.combatAnomalyTracking ? 'bg-[#f0b419]' : 'bg-gray-800'}`}></div>
+                        <div className={`absolute left-1 top-1 bg-[#0a0a0a] w-4 h-4 rounded-full transition-transform ${settings.combatAnomalyTracking ? 'transform translate-x-4' : ''}`}></div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-medium text-gray-300 uppercase tracking-wider group-hover:text-[#f0b419] transition-colors">
+                          Belt Tracking
+                        </span>
+                        <span className="text-[10px] text-gray-500">Show/hide Belt Log and Stats menu elements</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={settings.beltTracking}
+                          onChange={(e) => handleChange('beltTracking', e.target.checked)}
+                        />
+                        <div className={`block w-10 h-6 rounded-full transition-colors ${settings.beltTracking ? 'bg-[#f0b419]' : 'bg-gray-800'}`}></div>
+                        <div className={`absolute left-1 top-1 bg-[#0a0a0a] w-4 h-4 rounded-full transition-transform ${settings.beltTracking ? 'transform translate-x-4' : ''}`}></div>
+                      </div>
+                    </label>
                   </div>
                 </div>
               </div>

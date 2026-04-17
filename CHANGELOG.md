@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.6] - 2026-04-17
+
+### Application
+- Added feature toggles in Settings to show or hide **Combat Anomaly Tracking** and **Belt Tracking** modules.
+
 ## [0.4.5] - 2026-04-17
 
 ### Janice API & Loot Appraisal
