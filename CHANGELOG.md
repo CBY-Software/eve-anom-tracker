@@ -10,15 +10,15 @@ All notable changes to this project will be documented in this file.
 - Fixed an issue where the application window would not resize correctly when switching views.
 
 ### Income & Statistics
+- Fixed a SQL syntax error in the Income Stats dashboard when filtering for "All Time".
+- Added **Est. Income / Hour** metric to the Income Stats dashboard.
+- Implemented **Global Setup Throughput** calculation by merging overlapping activity windows across all active characters.
+- Added a noise filter to exclude bounty payouts under 100,000 ISK from hourly efficiency calculations.
 - Fixed an issue where the Income Stats dashboard would appear empty on initial load.
 - Set default filter to "Today" on the Income Stats screen for better immediate visibility.
 - Added automatic data refresh in Income Stats after a wallet sync completes.
 - Refined Income Analysis UI with neutral status colors for "High" data points.
 - Optimized Income Stats horizontal layout to prevent overflow when using Custom Range filters.
-- Added **Est. Income / Hour** metric to the Income Stats dashboard.
-- Implemented character-based rate aggregation (Sum of Rates) to accurately count multiboxing setup throughput.
-- Added proportional distribution logic for unassigned income (Manual Entries) among active characters.
-- Added a noise filter to exclude bounty payouts under 100,000 ISK from hourly efficiency calculations.
 
 
 ## [0.4.5] - 2026-04-17

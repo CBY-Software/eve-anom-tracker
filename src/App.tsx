@@ -1357,20 +1357,24 @@ export default function App() {
       `;
       const allBountyEntries = await database.select(allBountyQuery, baseParams) as any[];
 
-      const characterDurations: Record<number, number> = {};
-      const characterIntervals: Record<number, {start: number, end: number}[]> = {};
+      // Intervals for duration calculation
+      const intervals: {start: number, end: number}[] = [];
       
       allBountyEntries.forEach(entry => {
-        const charId = entry.character_id;
+        // If we have a character filter, only include their intervals
+        if (selectedCharacterId && entry.character_id !== selectedCharacterId) return;
+
         const end = new Date(entry.timestamp).getTime();
         const start = end - (20 * 60 * 1000);
-        if (!characterIntervals[charId]) characterIntervals[charId] = [];
-        characterIntervals[charId].push({ start, end });
+        intervals.push({ start, end });
       });
 
-      let totalSetupHours = 0;
-      Object.entries(characterIntervals).forEach(([charIdStr, intervals]) => {
-        const charId = parseInt(charIdStr);
+      // Merge all relevant intervals (calculates unique active time for the setup/character)
+      let totalActiveHours = 0;
+      if (intervals.length > 0) {
+        // Sort by start time for merging
+        intervals.sort((a, b) => a.start - b.start);
+
         const merged: {start: number, end: number}[] = [];
         let current = intervals[0];
         for (let i = 1; i < intervals.length; i++) {
@@ -1384,14 +1388,12 @@ export default function App() {
         }
         merged.push(current);
         
-        let charActiveMinutes = 0;
+        let totalActiveMinutes = 0;
         merged.forEach(interval => {
-          charActiveMinutes += (interval.end - interval.start) / (1000 * 60);
+          totalActiveMinutes += (interval.end - interval.start) / (1000 * 60);
         });
-        const charHours = charActiveMinutes / 60;
-        characterDurations[charId] = charHours;
-        totalSetupHours += charHours;
-      });
+        totalActiveHours = totalActiveMinutes / 60;
+      }
 
       // Income partitioned into assigned and unassigned
       const incomeGroupQuery = `
@@ -1408,20 +1410,17 @@ export default function App() {
       
       let totalEstIncomePerHour = 0;
 
-      // Calculate rate for each active character and sum them up (or show just one if filtered)
-      Object.entries(characterDurations).forEach(([charIdStr, charHours]) => {
-        const charId = parseInt(charIdStr);
-        if (charHours <= 0) return;
-
-        // If a specific character is selected, only add to the total if it matches
-        if (selectedCharacterId && charId !== selectedCharacterId) return;
-
-        const charAssignedIncome = incomeGroups.find(r => r.character_id === charId)?.total || 0;
-        // Unassigned income is split proportionally to hours
-        const charDistributedIncome = totalSetupHours > 0 ? (charHours / totalSetupHours) * unassignedIncome : 0;
-        
-        totalEstIncomePerHour += (charAssignedIncome + charDistributedIncome) / charHours;
-      });
+      if (totalActiveHours > 0) {
+        if (selectedCharacterId) {
+          // Individual View: (Char Income + All Unassigned Setup Income) / Char Time
+          const charIncome = incomeGroups.find(r => r.character_id === selectedCharacterId)?.total || 0;
+          totalEstIncomePerHour = (charIncome + unassignedIncome) / totalActiveHours;
+        } else {
+          // Total View: (Sum of all visible income) / Combined Global Time
+          const totalIncomeSum = incomeGroups.reduce((acc, curr) => acc + curr.total, 0);
+          totalEstIncomePerHour = totalIncomeSum / totalActiveHours;
+        }
+      }
 
       setIncomeStats({
         totalIncome: row?.total || 0,
