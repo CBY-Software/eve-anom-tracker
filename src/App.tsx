@@ -326,6 +326,14 @@ export default function App() {
   const [isUpdateDismissed, setIsUpdateDismissed] = useState(false);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [systemDateFormat, setSystemDateFormat] = useState<string>('yyyy-MM-dd');
+  const [recentResetTimestamp, setRecentResetTimestamp] = useState<string | null>(localStorage.getItem('recent_reset_timestamp'));
+  const [beltRecentResetTimestamp, setBeltRecentResetTimestamp] = useState<string | null>(localStorage.getItem('belt_recent_reset_timestamp'));
+  const [prevRecentResetTimestamp, setPrevRecentResetTimestamp] = useState<string | null>(null);
+  const [prevBeltRecentResetTimestamp, setPrevBeltRecentResetTimestamp] = useState<string | null>(null);
+  const [showCombatUndo, setShowCombatUndo] = useState(false);
+  const [showBeltUndo, setShowBeltUndo] = useState(false);
+  const combatUndoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const beltUndoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [hourlyStats, setHourlyStats] = useState<HourlyStat[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStat[]>([]);
@@ -1105,16 +1113,79 @@ export default function App() {
     }
   };
 
-  const fetchBeltHistory = async (database: any) => {
+  const resetRecentHistory = () => {
+    const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+    setPrevRecentResetTimestamp(recentResetTimestamp);
+    setRecentResetTimestamp(now);
+    localStorage.setItem('recent_reset_timestamp', now);
+    setShowCombatUndo(true);
+
+    if (combatUndoTimeoutRef.current) clearTimeout(combatUndoTimeoutRef.current);
+    combatUndoTimeoutRef.current = setTimeout(() => {
+      setShowCombatUndo(false);
+    }, 5000);
+
+    if (db) fetchHistory(db, now);
+  };
+
+  const undoRecentReset = () => {
+    setRecentResetTimestamp(prevRecentResetTimestamp);
+    if (prevRecentResetTimestamp) {
+      localStorage.setItem('recent_reset_timestamp', prevRecentResetTimestamp);
+    } else {
+      localStorage.removeItem('recent_reset_timestamp');
+    }
+    setShowCombatUndo(false);
+    if (combatUndoTimeoutRef.current) clearTimeout(combatUndoTimeoutRef.current);
+    if (db) fetchHistory(db, prevRecentResetTimestamp || undefined);
+  };
+
+  const resetBeltRecentHistory = () => {
+    const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+    setPrevBeltRecentResetTimestamp(beltRecentResetTimestamp);
+    setBeltRecentResetTimestamp(now);
+    localStorage.setItem('belt_recent_reset_timestamp', now);
+    setShowBeltUndo(true);
+
+    if (beltUndoTimeoutRef.current) clearTimeout(beltUndoTimeoutRef.current);
+    beltUndoTimeoutRef.current = setTimeout(() => {
+      setShowBeltUndo(false);
+    }, 5000);
+
+    if (db) fetchBeltHistory(db, now);
+  };
+
+  const undoBeltRecentReset = () => {
+    setBeltRecentResetTimestamp(prevBeltRecentResetTimestamp);
+    if (prevBeltRecentResetTimestamp) {
+      localStorage.setItem('belt_recent_reset_timestamp', prevBeltRecentResetTimestamp);
+    } else {
+      localStorage.removeItem('belt_recent_reset_timestamp');
+    }
+    setShowBeltUndo(false);
+    if (beltUndoTimeoutRef.current) clearTimeout(beltUndoTimeoutRef.current);
+    if (db) fetchBeltHistory(db, prevBeltRecentResetTimestamp || undefined);
+  };
+
+  const fetchBeltHistory = async (database: any, overrideReset?: string) => {
     try {
-      const result = await database.select(
-        "SELECT *, (SELECT timestamp FROM belt_logs b2 WHERE b2.id < belt_logs.id ORDER BY b2.id DESC LIMIT 1) as prev_timestamp FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
-      );
+      let query = "SELECT *, (SELECT timestamp FROM belt_logs b2 WHERE b2.id < belt_logs.id ORDER BY b2.id DESC LIMIT 1) as prev_timestamp FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours')";
+      let countQuery = "SELECT COUNT(*) as count FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours')";
+      const params: any[] = [];
+
+      const resetTs = overrideReset || beltRecentResetTimestamp;
+      if (resetTs) {
+        query += " AND timestamp > ?";
+        countQuery += " AND timestamp > ?";
+        params.push(resetTs);
+      }
+
+      query += " ORDER BY id DESC";
+
+      const result = await database.select(query, params);
       setBeltHistory(result as BeltLog[]);
 
-      const countResult = await database.select(
-        "SELECT COUNT(*) as count FROM belt_logs WHERE timestamp >= datetime('now', '-12 hours')"
-      );
+      const countResult = await database.select(countQuery, params);
       setBeltRecentCount((countResult as any[])[0]?.count || 0);
 
       if (currentView === 'beltStats') {
@@ -1514,20 +1585,29 @@ export default function App() {
   }, [db, currentView, selectedCharacterId, dateRangeType, customStartDate, customEndDate, journalFilter]);
 
 
-  const fetchHistory = async (database: any) => {
+  const fetchHistory = async (database: any, overrideReset?: string) => {
     try {
+      let query = "SELECT *, (SELECT timestamp FROM anom_logs a2 WHERE a2.id < anom_logs.id ORDER BY a2.id DESC LIMIT 1) as prev_timestamp FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours')";
+      let countQuery = "SELECT COUNT(*) as count FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours')";
+      const params: any[] = [];
+
+      const resetTs = overrideReset || recentResetTimestamp;
+      if (resetTs) {
+        query += " AND timestamp > ?";
+        countQuery += " AND timestamp > ?";
+        params.push(resetTs);
+      }
+
       const result = await database.select(
-        "SELECT *, (SELECT timestamp FROM anom_logs a2 WHERE a2.id < anom_logs.id ORDER BY a2.id DESC LIMIT 1) as prev_timestamp FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC LIMIT 3"
+        query + " ORDER BY id DESC LIMIT 3", params
       );
       setHistory(result as AnomLog[]);
 
-      const countResult = await database.select(
-        "SELECT COUNT(*) as count FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours')"
-      );
+      const countResult = await database.select(countQuery, params);
       setRecentCount((countResult as any[])[0]?.count || 0);
 
       const fullResult = await database.select(
-        "SELECT *, (SELECT timestamp FROM anom_logs a2 WHERE a2.id < anom_logs.id ORDER BY a2.id DESC LIMIT 1) as prev_timestamp FROM anom_logs WHERE timestamp >= datetime('now', '-12 hours') ORDER BY id DESC"
+        query + " ORDER BY id DESC", params
       );
       setFullHistory(fullResult as AnomLog[]);
 
@@ -2883,15 +2963,33 @@ export default function App() {
                   )}
                   <div className="flex items-center justify-between mb-3 border-b border-[#f0b419]/30 pb-1">
                     <h2 className="text-xs font-semibold text-[#f0b419] uppercase tracking-wider flex items-center">
-                      Recent History
+                      Recent
                       <span className="text-gray-500 ml-2 font-normal">| {recentCount} SITES</span>
                     </h2>
-                    <button
-                      onClick={() => setIsHistoryModalOpen(true)}
-                      className="text-xs text-gray-400 hover:text-[#f0b419] transition-colors cursor-pointer"
-                    >
-                      View
-                    </button>
+                    <div className="flex items-center space-x-3">
+                      {showCombatUndo ? (
+                        <button
+                          onClick={undoRecentReset}
+                          className="text-xs text-[#00e5ff] hover:text-white transition-colors cursor-pointer font-bold animate-pulse"
+                        >
+                          Undo
+                        </button>
+                      ) : (
+                        <button
+                          onClick={resetRecentHistory}
+                          className="text-xs text-gray-500 hover:text-red-500 transition-colors cursor-pointer"
+                          title="Clear history"
+                        >
+                          Clear
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setIsHistoryModalOpen(true)}
+                        className="text-xs text-gray-400 hover:text-[#f0b419] transition-colors cursor-pointer"
+                      >
+                        View
+                      </button>
+                    </div>
                   </div>
                   <div className="flex-1 overflow-y-auto space-y-2">
                     {history.length === 0 ? (
@@ -2901,6 +2999,7 @@ export default function App() {
                     ) : (
                       history.map((log) => {
                         const timeStr = formatTimestamp(log.timestamp, 'HH:mm:ss');
+                        const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
                         const icons = getActiveIcons(log);
 
                         return (
@@ -2910,6 +3009,9 @@ export default function App() {
                           >
                             <div className="flex-1 truncate pr-2">
                               <span className="text-gray-500 mr-2">[{timeStr}]</span>
+                              {duration && (
+                                <span className="text-[#00ff7f]/70 font-mono text-[10px] mr-2">({duration})</span>
+                              )}
                               <span className="text-gray-200 font-medium">
                                 {log.location_system ? `${log.location_system} - ` : ''}{log.site_type}
                               </span>
@@ -3046,9 +3148,33 @@ export default function App() {
                 <div className={`flex-1 flex flex-col overflow-hidden ${isLandscape ? 'border-l border-gray-800 pl-4' : ''}`}>
                   <div className="flex items-center justify-between mb-3 border-b border-[#f0b419]/30 pb-1">
                     <h2 className="text-xs font-semibold text-[#f0b419] uppercase tracking-wider flex items-center">
-                      Recent History
+                      Recent
                       <span className="text-gray-500 ml-2 font-normal">| {beltRecentCount} BELTS</span>
                     </h2>
+                    <div className="flex items-center space-x-3">
+                      {showBeltUndo ? (
+                        <button
+                          onClick={undoBeltRecentReset}
+                          className="text-xs text-[#00e5ff] hover:text-white transition-colors cursor-pointer font-bold animate-pulse"
+                        >
+                          Undo
+                        </button>
+                      ) : (
+                        <button
+                          onClick={resetBeltRecentHistory}
+                          className="text-xs text-gray-500 hover:text-red-500 transition-colors cursor-pointer"
+                          title="Clear history"
+                        >
+                          Clear
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setIsTrackedBeltsModalOpen(true)}
+                        className="text-xs text-gray-400 hover:text-[#f0b419] transition-colors cursor-pointer"
+                      >
+                        View
+                      </button>
+                    </div>
                   </div>
                   <div className="flex-1 overflow-y-auto space-y-2">
                     {beltHistory.length === 0 ? (
@@ -3058,6 +3184,7 @@ export default function App() {
                     ) : (
                       beltHistory.map((log) => {
                         const timeStr = formatTimestamp(log.timestamp, 'HH:mm:ss');
+                        const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
                         const outcomeIcons: { label: string; color: 'gold' | 'blue' | 'green' | 'emerald' | 'cyan' | 'purple' }[] = [];
                         if (log.was_faction_spawn === 1) outcomeIcons.push({ label: 'FAC-SUB', color: 'emerald' });
                         if (log.was_hauler_spawn === 1) outcomeIcons.push({ label: 'Hauler', color: 'cyan' });
@@ -3070,10 +3197,9 @@ export default function App() {
                           >
                             <div className="flex-1 truncate pr-2">
                               <span className="text-gray-500 mr-2">[{timeStr}]</span>
-                              {(() => {
-                                const duration = getSiteDuration(log.timestamp, log.prev_timestamp);
-                                return duration ? <span className="text-[#00ff7f]/70 font-mono text-[10px] mr-2">({duration})</span> : null;
-                              })()}
+                              {duration && (
+                                <span className="text-[#00ff7f]/70 font-mono text-[10px] mr-2">({duration})</span>
+                              )}
                               <span className="text-gray-200 font-medium">
                                 {log.location_system || 'Unknown System'}
                               </span>
@@ -4406,6 +4532,7 @@ export default function App() {
                             setTrackedSites(prev => prev.filter(l => l.id !== logToDelete));
                             setFullHistory(prev => prev.filter(l => l.id !== logToDelete));
                             setLogToDelete(null);
+                            fetchHistory(db);
                             playTone('delete');
                           });
                       }
@@ -4445,6 +4572,7 @@ export default function App() {
                             setBeltHistory(prev => prev.filter(l => l.id !== beltLogToDelete));
                             setTrackedBelts(prev => prev.filter(l => l.id !== beltLogToDelete));
                             setBeltLogToDelete(null);
+                            fetchBeltHistory(db);
                             playTone('delete');
                             // Refresh stats
                             fetchBeltStats(db);
@@ -4494,7 +4622,7 @@ export default function App() {
               <div className="p-4 border-b border-[#f0b419]/30 flex justify-between items-center bg-[#0a0a0a]">
                 <div className="flex items-baseline space-x-3">
                   <h2 className="text-lg font-bold text-[#f0b419] uppercase tracking-wider">
-                    Recent History
+                    Recent
                   </h2>
                   <span className="text-xs font-mono text-gray-500 uppercase tracking-widest">
                     | Last 12 Hours
