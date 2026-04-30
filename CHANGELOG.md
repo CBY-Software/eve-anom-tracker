@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.7] - 2026-05-01
+
+### Combat Log & UI
+- Renamed **Recent** section to **Recent Sites** for better clarity.
+- Added **Site Duration** display to recent logs to track time spent per anomaly.
+- Implemented **Clear History** button in Combat Log with confirmation dialog.
+- Added logic to only clear history older than 12 hours or since last daily reset.
+- Fixed a bug where deleting a log entry would not update the recent site count display.
+
 ## [0.4.6] - 2026-04-17
 
 ### Application
