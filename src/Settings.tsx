@@ -32,6 +32,8 @@ export interface AppSettings {
   janicePercentage: number;
   combatAnomalyTracking: boolean;
   beltTracking: boolean;
+  incomeStatsTracking: boolean;
+  minPayout: number;
 }
 
 interface SettingsProps {
@@ -423,6 +425,7 @@ export default function Settings({
                       </div>
                     </label>
 
+
                     <label className="flex items-center justify-between cursor-pointer group">
                       <div className="flex flex-col">
                         <span className="text-xs font-medium text-gray-300 uppercase tracking-wider group-hover:text-[#f0b419] transition-colors">
@@ -441,6 +444,48 @@ export default function Settings({
                         <div className={`absolute left-1 top-1 bg-[#0a0a0a] w-4 h-4 rounded-full transition-transform ${settings.beltTracking ? 'transform translate-x-4' : ''}`}></div>
                       </div>
                     </label>
+
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-medium text-gray-300 uppercase tracking-wider group-hover:text-[#f0b419] transition-colors">
+                          Income Statistics
+                        </span>
+                        <span className="text-[10px] text-gray-500">Show/hide Income Stats menu and track wallet income</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={settings.incomeStatsTracking !== false}
+                          onChange={(e) => handleChange('incomeStatsTracking', e.target.checked)}
+                        />
+                        <div className={`block w-10 h-6 rounded-full transition-colors ${settings.incomeStatsTracking !== false ? 'bg-[#f0b419]' : 'bg-gray-800'}`}></div>
+                        <div className={`absolute left-1 top-1 bg-[#0a0a0a] w-4 h-4 rounded-full transition-transform ${settings.incomeStatsTracking !== false ? 'transform translate-x-4' : ''}`}></div>
+                      </div>
+                    </label>
+
+                    {(settings.incomeStatsTracking !== false) && (
+                      <div className="pl-4 py-2 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200 border-l border-[#f0b419]/20 ml-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-col">
+                            <span className="text-[11px] font-bold text-gray-200">Ignore Payouts below (ISK)</span>
+                            <span className="text-[10px] text-gray-500">Bounty and ESS payouts lower than this will be ignored</span>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={settings.minPayout?.toLocaleString() || '0'}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                                handleChange('minPayout', val);
+                              }}
+                              className="bg-[#0a0a0a] border border-gray-800 text-gray-200 text-xs font-mono px-3 py-1.5 rounded focus:outline-none focus:border-[#f0b419]/50 w-[120px] text-right pr-8"
+                            />
+                            <span className="absolute right-2 top-1.5 text-[9px] text-gray-600 font-bold">ISK</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

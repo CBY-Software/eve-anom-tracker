@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.8] - 2026-05-09
+
+### Income & Statistics
+- Added **Active Character** count to the Income Stats summary to track unique contributing characters.
+- Added **Total Active Time** display to the Income Stats dashboard for better visibility of merged activity windows.
+- Added an **Income Statistics** feature toggle in Settings to show/hide the module from the main menu.
+- Implemented a customizable **Minimum Payout** filter in Settings to ignore small bounty and ESS payouts (defaulting to 100,000 ISK).
+
+
 ## [0.4.7] - 2026-05-01
 
 ### Combat Log & UI

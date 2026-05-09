@@ -79,6 +79,8 @@ interface IncomeStatsData {
   additional: number;
   dailyIncome: DailyIncomeStat[];
   estIncomePerHour: number;
+  activeCharacters: number;
+  totalActiveHours: number;
 }
 
 interface StatsData {
@@ -182,6 +184,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   janicePercentage: 100,
   combatAnomalyTracking: true,
   beltTracking: true,
+  incomeStatsTracking: true,
+  minPayout: 100000,
 };
 
 // Bootstrap key layout settings synchronously from localStorage to avoid
@@ -1341,6 +1345,7 @@ export default function App() {
   };
 
   const fetchIncomeStats = async (database: any) => {
+    const minPayout = settings.minPayout || 0;
     try {
       const params: any[] = [];
       const conditions: string[] = [];
@@ -1365,16 +1370,23 @@ export default function App() {
       // 1. Summary Stats
       const summaryQuery = `
         SELECT 
-          SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total,
-          SUM(CASE WHEN date(timestamp${tm}) = date('now'${tm}) AND amount > 0 THEN amount ELSE 0 END) as today,
-          SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty,
-          COUNT(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN 1 END) as bounty_count,
-          MAX(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty_max,
-          MIN(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount END) as bounty_min,
-          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess,
-          COUNT(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN 1 END) as ess_count,
-          MAX(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess_max,
-          MIN(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount END) as ess_min,
+          SUM(CASE 
+            WHEN LOWER(ref_type) IN ('bounty_prizes', 'ess_escrow_transfer') THEN (CASE WHEN amount >= ${minPayout} THEN amount ELSE 0 END)
+            ELSE (CASE WHEN amount > 0 THEN amount ELSE 0 END)
+          END) as total,
+          SUM(CASE 
+            WHEN date(timestamp${tm}) = date('now'${tm}) AND amount > 0 THEN 
+              (CASE WHEN LOWER(ref_type) IN ('bounty_prizes', 'ess_escrow_transfer') THEN (CASE WHEN amount >= ${minPayout} THEN amount ELSE 0 END) ELSE amount END)
+            ELSE 0 
+          END) as today,
+          SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount >= ${minPayout} THEN amount ELSE 0 END) as bounty,
+          COUNT(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount >= ${minPayout} THEN 1 END) as bounty_count,
+          MAX(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount >= ${minPayout} THEN amount ELSE 0 END) as bounty_max,
+          MIN(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount >= ${minPayout} THEN amount END) as bounty_min,
+          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount >= ${minPayout} THEN amount ELSE 0 END) as ess,
+          COUNT(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount >= ${minPayout} THEN 1 END) as ess_count,
+          MAX(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount >= ${minPayout} THEN amount ELSE 0 END) as ess_max,
+          MIN(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount >= ${minPayout} THEN amount END) as ess_min,
           SUM(CASE WHEN LOWER(ref_type) NOT IN ('bounty_prizes', 'ess_escrow_transfer') AND amount > 0 THEN amount ELSE 0 END) as additional
         FROM wallet_journal${whereClause}
       `;
@@ -1383,8 +1395,11 @@ export default function App() {
 
       // 2. 7-Day Avg (Special query)
       const avgQuery = `
-        SELECT SUM(amount) / 7 as avg FROM wallet_journal 
-        WHERE date(timestamp${tm}) > date('now'${tm}, '-7 days') AND amount > 0
+        SELECT SUM(CASE 
+          WHEN LOWER(ref_type) IN ('bounty_prizes', 'ess_escrow_transfer') THEN (CASE WHEN amount >= ${minPayout} THEN amount ELSE 0 END)
+          ELSE (CASE WHEN amount > 0 THEN amount ELSE 0 END)
+        END) / 7 as avg FROM wallet_journal 
+        WHERE date(timestamp${tm}) > date('now'${tm}, '-7 days')
       `;
       const avgResult = await database.select(avgQuery);
       const avgRow = (avgResult as any[])[0];
@@ -1393,9 +1408,12 @@ export default function App() {
       const dailyQuery = `
         SELECT 
           date(timestamp${tm}) as date,
-          SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as amount,
-          SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount > 0 THEN amount ELSE 0 END) as bounty,
-          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount > 0 THEN amount ELSE 0 END) as ess,
+          SUM(CASE 
+            WHEN LOWER(ref_type) IN ('bounty_prizes', 'ess_escrow_transfer') THEN (CASE WHEN amount >= ${minPayout} THEN amount ELSE 0 END)
+            ELSE (CASE WHEN amount > 0 THEN amount ELSE 0 END)
+          END) as amount,
+          SUM(CASE WHEN LOWER(ref_type) = 'bounty_prizes' AND amount >= ${minPayout} THEN amount ELSE 0 END) as bounty,
+          SUM(CASE WHEN LOWER(ref_type) = 'ess_escrow_transfer' AND amount >= ${minPayout} THEN amount ELSE 0 END) as ess,
           SUM(CASE WHEN LOWER(ref_type) NOT IN ('bounty_prizes', 'ess_escrow_transfer') AND amount > 0 THEN amount ELSE 0 END) as additional
         FROM wallet_journal
         WHERE timestamp >= date('now'${tm}, '-30 days')
@@ -1423,7 +1441,7 @@ export default function App() {
         FROM wallet_journal
         ${baseWhere}
         ${baseWhere ? 'AND' : 'WHERE'} LOWER(ref_type) = 'bounty_prizes'
-        AND amount >= 100000
+        AND amount >= ${minPayout}
         ORDER BY timestamp ASC
       `;
       const allBountyEntries = await database.select(allBountyQuery, baseParams) as any[];
@@ -1468,11 +1486,13 @@ export default function App() {
 
       // Income partitioned into assigned and unassigned
       const incomeGroupQuery = `
-        SELECT character_id, SUM(amount) as total
+        SELECT character_id, 
+          SUM(CASE 
+            WHEN LOWER(ref_type) IN ('bounty_prizes', 'ess_escrow_transfer') THEN (CASE WHEN amount >= ${minPayout} THEN amount ELSE 0 END)
+            ELSE (CASE WHEN amount > 0 THEN amount ELSE 0 END)
+          END) as total
         FROM wallet_journal
         ${baseWhere}
-        ${baseWhere ? 'AND' : 'WHERE'} amount > 0
-        AND (LOWER(ref_type) != 'bounty_prizes' OR amount >= 100000)
         GROUP BY character_id
       `;
       const incomeGroups = await database.select(incomeGroupQuery, baseParams) as any[];
@@ -1507,7 +1527,9 @@ export default function App() {
         essMin: row?.ess_min || 0,
         additional: row?.additional || 0,
         dailyIncome: dailyResult as DailyIncomeStat[],
-        estIncomePerHour: totalEstIncomePerHour
+        estIncomePerHour: totalEstIncomePerHour,
+        activeCharacters: incomeGroups.filter(r => r.character_id !== null && r.character_id !== 0 && r.total > 0).length,
+        totalActiveHours: totalActiveHours
       });
 
     } catch (error) {
@@ -2306,8 +2328,11 @@ export default function App() {
                   <span className="text-xl ml-2 text-[#f0b419]/60">M</span>
                 </div>
               </div>
+              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-4">
+                {incomeStats ? incomeStats.activeCharacters : 0} active character{incomeStats?.activeCharacters !== 1 ? 's' : ''}
+              </div>
             </div>
-            <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group min-h-[135px]">
+            <div className="bg-[#141414] border border-[#f0b419]/30 p-5 rounded-xl relative overflow-hidden group flex flex-col justify-between min-h-[135px]">
               <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Activity size={48} />
               </div>
@@ -2317,6 +2342,10 @@ export default function App() {
                   ? (incomeStats.estIncomePerHour / 1000000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) 
                   : '0.0'}
                 <span className="text-xl ml-2 text-[#f0b419]/60">M</span>
+              </div>
+              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-4">
+                {incomeStats ? Math.floor(incomeStats.totalActiveHours).toString().padStart(2, '0') : '00'}:
+                {incomeStats ? Math.round((incomeStats.totalActiveHours % 1) * 60).toString().padStart(2, '0') : '00'} total active time
               </div>
             </div>
           </div>
@@ -2729,12 +2758,14 @@ export default function App() {
                   </button>
                 </>
               )}
-              <button
-                onClick={() => setCurrentView('incomeStats')}
-                className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'incomeStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                Income Stats
-              </button>
+              {settings.incomeStatsTracking !== false && (
+                <button
+                  onClick={() => setCurrentView('incomeStats')}
+                  className={`text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${currentView === 'incomeStats' ? 'text-[#f0b419]' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  Income Stats
+                </button>
+              )}
             </div>
             <button
               onClick={() => {
